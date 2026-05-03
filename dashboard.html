@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Cliente - NeiFe</title>
+    <link rel="stylesheet" href="styles/dashboard.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <button class="sidebar-toggle" onclick="toggleSidebar()">
+            <i class="fas fa-bars"></i>
+        </button>
+
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <a href="#" onclick="loadDashboardSummary()" class="logo-link">
+                    <img src="images/Homesmall.png" alt="NeiFe Logo" class="logo">
+                </a>
+            </div>
+
+            <nav class="sidebar-nav">
+                <!-- Soy Cliente Section -->
+                <div class="nav-section">
+                    <h2>Soy Cliente</h2>
+                    <ul>
+                        <li><a href="#casos-activos">Casos Activos</a></li>
+                        <li><a href="#notificaciones">Notificaciones</a></li>
+                        <li class="sub-section">
+                            <h3>Acciones rápidas</h3>
+                            <ul>
+                                <li><a href="#nuevo-caso">Nuevo Caso</a></li>
+                                <li><a href="#programar-cita">Programar cita</a></li>
+                                <li><a href="#subir-documento">Subir Documento</a></li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Mis Casos Section -->
+                <div class="nav-section">
+                    <h2>Mis Casos</h2>
+                    <ul>
+                        <li><a href="#actividad-casos">Actividad Casos</a></li>
+                        <li><a href="#linea-tiempo">Línea de tiempo</a></li>
+                        <li><a href="#documentos-compartidos">Documentos compartidos</a></li>
+                        <li><a href="#historial">Historial</a></li>
+                        <li><a href="#proximos-pasos">Próximos pasos</a></li>
+                        <li><a href="#solicitar-actualizacion">Solicitar Actualización</a></li>
+                    </ul>
+                </div>
+
+                <!-- Busca Abogados Section -->
+                <div class="nav-section">
+                    <h2>Busca Abogados</h2>
+                    <ul>
+                        <li><a href="#mapa-abogados">Mapa de abogados</a></li>
+                        <li class="sub-section">
+                            <h3>¿Qué buscas?</h3>
+                            <ul>
+                                <li><a href="#especialidad-legal">Especialidad Legal</a></li>
+                                <li><a href="#rango-tarifas">Rango de tarifas</a></li>
+                                <li><a href="#disponibilidad">Disponibilidad</a></li>
+                                <li><a href="#idiomas">Idiomas Hablados</a></li>
+                                <li><a href="#calificacion-clientes">Calificación de clientes</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="#publicaciones-abogados">Publicaciones de abogados</a></li>
+                        <li class="sub-section">
+                            <h3>Compara</h3>
+                            <ul>
+                                <li><a href="#tiempo-resolver">Tiempo para resolver</a></li>
+                                <li><a href="#experticia">Experticia</a></li>
+                                <li><a href="#especialidades">Especialidades</a></li>
+                                <li><a href="#indice-exito">Índice de éxito</a></li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Perfil de Abogado Section -->
+                <div class="nav-section">
+                    <h2>Perfil de Abogado</h2>
+                    <ul>
+                        <li><a href="#experiencia-especialidad">Experiencia y especialidad</a></li>
+                        <li><a href="#casos-similares">Casos similares manejados</a></li>
+                        <li><a href="#calificaciones-resenas">Calificaciones y reseñas</a></li>
+                        <li><a href="#tarifas-opciones">Tarifas y opciones de pago</a></li>
+                        <li><a href="#disponibilidad-actual">Disponibilidad actual</a></li>
+                        <li><a href="#iniciar-chat">Iniciar Chat</a></li>
+                        <li><a href="#enlace-linkedin">Enlace LinkedIn</a></li>
+                    </ul>
+                </div>
+
+                <!-- Centro de Comunicación Section -->
+                <div class="nav-section">
+                    <h2>Centro de Comunicación</h2>
+                    <ul>
+                        <li><a href="#chat">Chat</a></li>
+                        <li><a href="#programar-reunion">Programar reunión</a></li>
+                        <li><a href="#historial-comunicacion">Historial de comunicación</a></li>
+                        <li><a href="#firmar-documentos">Firmar documentos</a></li>
+                    </ul>
+                </div>
+
+                <!-- Recursos Legales Section -->
+                <div class="nav-section">
+                    <h2>Recursos Legales</h2>
+                    <ul>
+                        <li><a href="#biblioteca-legal">Biblioteca guía legales</a></li>
+                        <li><a href="#videos-legales">Video procesos legales</a></li>
+                        <li><a href="#terminos-legales">Términos legales</a></li>
+                        <li><a href="#calculadora-costos">Calculadora costos legales</a></li>
+                    </ul>
+                </div>
+
+                <!-- Gestión Financiera Section -->
+                <div class="nav-section">
+                    <h2>Gestión Financiera</h2>
+                    <ul>
+                        <li><a href="#resumen-facturas">Resumen de facturas y pagos</a></li>
+                        <li><a href="#historial-transacciones">Historial de transacciones</a></li>
+                        <li><a href="#opcion-pago">Opción de pago</a></li>
+                        <li><a href="#presupuesto">Presupuesto y estimaciones</a></li>
+                    </ul>
+                </div>
+
+                <!-- Evaluación y Feedback Section -->
+                <div class="nav-section">
+                    <h2>Evaluación y Feedback</h2>
+                    <ul>
+                        <li><a href="#calificaciones-resenas-feedback">Calificaciones y reseñas</a></li>
+                        <li><a href="#encuestas-servicios">Encuestas de servicios</a></li>
+                        <li><a href="#sugerencias">Sugerencias</a></li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="dashboard-header">
+                <div class="user-welcome">
+                    Hola, <span id="userName">Cliente</span>
+                </div>
+            </header>
+            
+            <div class="content-area">
+                <div class="section-content active">
+                    <h2>Bienvenido a tu Dashboard</h2>
+                    <p>Selecciona una opción del menú para comenzar.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="scripts/dashboard.js"></script>
+</body>
+</html>
+

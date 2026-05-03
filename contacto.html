@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contacto - NeiFe</title>
+    <link rel="stylesheet" href="styles/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="contact-page">
+    <nav class="navbar">
+        <div class="logo">
+            <img src="images/Homesmall.png" alt="NeiFe Logo" height="100">
+        </div>
+        <div class="nav-links">
+            <a href="index.html">Inicio</a>
+            <a href="soy-cliente.html">Soy Cliente</a>
+            <a href="soy-abogado.html">Soy Abogado</a>
+            <a href="contacto.html">Contacto</a>
+            <button onclick="openLoginModal()" class="login-btn">Iniciar sesión</button>
+        </div>
+        <div class="menu-icon" onclick="toggleMenu()">
+            <i class="fas fa-bars"></i>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <section class="contact-section">
+            <h1>Contacto</h1>
+            <form id="contact-form" class="contact-form">
+                <input type="text" placeholder="Nombre y Apellido" required>
+                <input type="email" placeholder="Correo electrónico" required>
+                <select required>
+                    <option value="">Elije una opción</option>
+                    <option value="cliente">Soy Cliente</option>
+                    <option value="abogado">Soy Abogado</option>
+                    <option value="otro">Otro</option>
+                </select>
+                <textarea placeholder="Mensaje o consulta" required></textarea>
+                <button type="submit" class="submit-btn">Enviar</button>
+            </form>
+        </section>
+
+        <section class="faq-section">
+            <h2>Preguntas Frecuentes</h2>
+            <div class="faq-item">
+                <h3>¿Cómo puedo registrarme en NeiFe?</h3>
+                <p>Puedes registrarte como cliente o abogado en las páginas correspondientes...</p>
+            </div>
+            <div class="faq-item">
+                <h3>¿Cuánto cuesta usar NeiFe?</h3>
+                <p>El registro es gratuito. Los costos varían según el tipo de servicio legal...</p>
+            </div>
+            <!-- Más preguntas frecuentes aquí -->
+        </section>
+    </main>
+
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeLoginModal()">&times;</span>
+            <h2>Iniciar sesión</h2>
+            <form id="login-form">
+                <input type="email" id="login-email" placeholder="Correo electrónico" required>
+                <input type="password" id="login-password" placeholder="Contraseña" required>
+                <button type="submit" class="submit-btn">Iniciar sesión</button>
+                <div class="form-links">
+                    <a href="#" onclick="showForgotPassword()">Olvidé contraseña</a>
+                    <a href="#" onclick="showForgotEmail()">Olvidé qué correo utilicé</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="scripts/script.js"></script>
+</body>
+</html>
+

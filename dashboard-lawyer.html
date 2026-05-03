@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Abogado - NeiFe</title>
+    <link rel="stylesheet" href="styles/dashboard-lawyer.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <button class="sidebar-toggle" onclick="toggleSidebar()">
+            <i class="fas fa-bars"></i>
+        </button>
+
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <a href="#" onclick="loadDashboardSummary()" class="logo-link">
+                    <img src="images/transparenthome.png" alt="NeiFe Logo" class="logo">
+                </a>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <h2>1. Soy Abogado</h2>
+                    <ul>
+                        <li><a href="#resumen-casos">1. Resumen de casos activos</a></li>
+                        <li><a href="#notificaciones">2. Notificaciones</a></li>
+                        <li><a href="#metricas">3. Métricas de rendimiento</a></li>
+                        <li><a href="#tareas-pendientes">4. Tareas pendientes</a></li>
+                    </ul>
+                </div>
+
+                <div class="nav-section">
+                    <h2>2. Gestión de Casos</h2>
+                    <ul>
+                        <li><a href="#lista-casos">1. Lista de casos activos</a></li>
+                        <li>
+                            <h3>2. Para cada caso:</h3>
+                            <ul>
+                                <li><a href="#detalles-cliente">1. Detalles del cliente</a></li>
+                                <li><a href="#documentos">2. Documentos relacionados</a></li>
+                                <li><a href="#notas-estrategia">3. Notas y estrategia</a></li>
+                                <li><a href="#tiempo-facturacion">4. Registro de tiempo y facturación</a></li>
+                                <li><a href="#hitos-plazos">5. Hitos y plazos</a></li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="nav-section">
+                    <h2>3. Búsqueda y Aceptación de Nuevos Casos</h2>
+                    <ul>
+                        <li><a href="#casos-disponibles">1. Lista de casos disponibles</a></li>
+                        <li><a href="#filtros">2. Filtros de búsqueda</a></li>
+                        <li><a href="#expresar-interes">3. Expresar interés</a></li>
+                    </ul>
+                </div>
+
+                <div class="nav-section">
+                    <h2>4. Calendario y Disponibilidad</h2>
+                    <ul>
+                        <li><a href="#vista-calendario">1. Vista de calendario</a></li>
+                        <li><a href="#configurar-disponibilidad">2. Configurar disponibilidad</a></li>
+                        <li><a href="#sincronizacion">3. Sincronización de calendarios</a></li>
+                        <li><a href="#gestion-citas">4. Gestión de citas</a></li>
+                    </ul>
+                </div>
+
+                <div class="nav-section">
+                    <h2>5. Perfil Profesional</h2>
+                    <ul>
+                        <li><a href="#editar-perfil">1. Editar información</a></li>
+                        <li><a href="#sincronizar-linkedin">2. Sincronizar con LinkedIn</a></li>
+                        <li><a href="#configurar-tarifas">3. Configurar tarifas</a></li>
+                        <li><a href="#casos-exitosos">4. Galería de casos exitosos</a></li>
+                    </ul>
+                </div>
+
+                <div class="nav-section">
+                    <h2>6. Centro de Investigación Legal</h2>
+                    <ul>
+                        <li><a href="#jurisprudencia">1. Base de datos de jurisprudencia</a></li>
+                        <li><a href="#ia-busqueda">2. IA para búsqueda</a></li>
+                        <li><a href="#analisis-predictivo">3. Análisis predictivo</a></li>
+                    </ul>
+                </div>
+
+                <div class="nav-section">
+                    <h2>7. Networking y Colaboración</h2>
+                    <ul>
+                        <li><a href="#foro">1. Foro privado</a></li>
+                        <li><a href="#mentoria">2. Oportunidades de mentoría</a></li>
+                        <li><a href="#directorio">3. Directorio de expertos</a></li>
+                    </ul>
+                </div>
+
+                <div class="nav-section">
+                    <h2>8. Formación Continua</h2>
+                    <ul>
+                        <li><a href="#cursos">1. Catálogo de cursos</a></li>
+                        <li><a href="#creditos">2. Seguimiento de créditos</a></li>
+                        <li><a href="#webinars">3. Webinars y conferencias</a></li>
+                    </ul>
+                </div>
+
+                <div class="nav-section">
+                    <h2>9. Análisis y Reportes</h2>
+                    <ul>
+                        <li><a href="#estadisticas">1. Estadísticas de casos</a></li>
+                        <li><a href="#eficiencia">2. Análisis de eficiencia</a></li>
+                        <li><a href="#reportes-financieros">3. Reportes financieros</a></li>
+                    </ul>
+                </div>
+
+                <div class="nav-section">
+                    <h2>10. Herramientas de Productividad</h2>
+                    <ul>
+                        <li><a href="#generacion-documentos">1. Generación de documentos</a></li>
+                        <li><a href="#integracion-software">2. Integración con software</a></li>
+                        <li><a href="#asistente-virtual">3. Asistente virtual</a></li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="dashboard-header">
+                <div class="user-welcome">
+                    Bienvenido, <span id="lawyerName">Abogado</span>
+                </div>
+            </header>
+            
+            <div class="content-area">
+                <div class="section-content active">
+                    <h2>Panel de Control del Abogado</h2>
+                    <div class="dashboard-summary">
+                        <div class="summary-section">
+                            <h3>1. Resumen de Casos Activos</h3>
+                            <p>Casos en curso: 5</p>
+                            <p>Casos de alta prioridad: 2</p>
+                            <p>Próximo plazo: 15/05/2023</p>
+                        </div>
+                        <div class="summary-section">
+                            <h3>2. Notificaciones</h3>
+                            <p>Nuevos casos potenciales: 3</p>
+                            <p>Mensajes no leídos: 7</p>
+                        </div>
+                        <div class="summary-section">
+                            <h3>3. Métricas de Rendimiento</h3>
+                            <p>Casos ganados este mes: 4</p>
+                            <p>Satisfacción del cliente: 4.8/5</p>
+                        </div>
+                        <div class="summary-section">
+                            <h3>4. Tareas Pendientes</h3>
+                            <p>Documentos por revisar: 3</p>
+                            <p>Próxima cita: Hoy, 14:00</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="scripts/dashboard-lawyer.js"></script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soy Cliente - NeiFe</title>
+    <link rel="stylesheet" href="styles/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="client-page">
+    <nav class="navbar">
+        <div class="logo">
+            <img src="images/Homesmall.png" alt="NeiFe Logo" height="100">
+        </div>
+        <div class="nav-links">
+            <a href="index.html">Inicio</a>
+            <a href="soy-cliente.html">Soy Cliente</a>
+            <a href="soy-abogado.html">Soy Abogado</a>
+            <a href="contacto.html">Contacto</a>
+            <button onclick="openLoginModal()" class="login-btn">Iniciar sesión</button>
+        </div>
+        <div class="menu-icon" onclick="toggleMenu()">
+            <i class="fas fa-bars"></i>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <section class="client-section">
+            <h1>Soy Cliente</h1>
+            <h2>¿Tienes un caso legal que resolver?</h2>
+            <p>Sube tu caso y abogados se contactarán contigo. Busca en la lista de abogados la especialidad que necesitas y comunícate con ellos.</p>
+
+            <form id="client-register-form" class="register-form">
+                <input type="text" placeholder="Nombre y Apellido" required>
+                <input type="email" placeholder="Correo electrónico" required>
+                <select required>
+                    <option value="">Tipo de caso</option>
+                    <option value="divorcio">Divorcio</option>
+                    <option value="laboral">Laboral</option>
+                    <option value="penal">Penal</option>
+                    <option value="civil">Civil</option>
+                </select>
+                <textarea placeholder="Describe tu caso" required></textarea>
+                <input type="password" placeholder="Contraseña" required>
+                <input type="password" placeholder="Confirma tu contraseña" required>
+                <div class="terms">
+                    <input type="checkbox" id="terms" required>
+                    <label for="terms">Acepto los términos y condiciones</label>
+                </div>
+                <button type="submit" class="submit-btn">Crear cuenta</button>
+            </form>
+        </section>
+
+        <section class="benefits-section">
+            <h2>Beneficios para Clientes</h2>
+            <div class="benefits-grid">
+                <div class="benefit-item">
+                    <i class="fas fa-search"></i>
+                    <h3>Encuentra a tu abogado ideal</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-video"></i>
+                    <h3>Comunícate de manera presencial u online</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-star"></i>
+                    <h3>Tú eliges la excelencia del abogado</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-dollar-sign"></i>
+                    <h3>Define tu presupuesto</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-lock"></i>
+                    <h3>Seguridad y privacidad en la comunicación</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-balance-scale"></i>
+                    <h3>Posibilidad de comparar perfiles</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-credit-card"></i>
+                    <h3>Pagos por la página seguros</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-map-marked-alt"></i>
+                    <h3>Encuentra abogados en todo Chile</h3>
+                </div>
+            </div>
+        </section>
+
+        <section class="case-examples">
+            <h2>Ejemplos de casos en NeiFe</h2>
+            <div class="case-grid">
+                <div class="case-item">Divorcio</div>
+                <div class="case-item">Contratos</div>
+                <div class="case-item">Consultas laborales</div>
+                <div class="case-item">Defensa Penal</div>
+                <div class="case-item">Inmobiliario</div>
+            </div>
+        </section>
+    </main>
+
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeLoginModal()">&times;</span>
+            <h2>Iniciar sesión</h2>
+            <form id="login-form">
+                <input type="email" id="login-email" placeholder="Correo electrónico" required>
+                <input type="password" id="login-password" placeholder="Contraseña" required>
+                <button type="submit" class="submit-btn">Iniciar sesión</button>
+                <div class="form-links">
+                    <a href="#" onclick="showForgotPassword()">Olvidé contraseña</a>
+                    <a href="#" onclick="showForgotEmail()">Olvidé qué correo utilicé</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="scripts/script.js"></script>
+</body>
+</html>
+

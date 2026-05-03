@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soy Abogado - NeiFe</title>
+    <link rel="stylesheet" href="styles/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">
+            <img src="images/Homesmall.png" alt="NeiFe Logo" height="100">
+        </div>
+        <div class="nav-links">
+            <a href="index.html">Inicio</a>
+            <a href="soy-cliente.html">Soy Cliente</a>
+            <a href="soy-abogado.html">Soy Abogado</a>
+            <a href="contacto.html">Contacto</a>
+            <button onclick="openLoginModal()" class="login-btn">Iniciar sesión</button>
+        </div>
+        <div class="menu-icon" onclick="toggleMenu()">
+            <i class="fas fa-bars"></i>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <section class="lawyer-section">
+            <h1>Soy Abogado</h1>
+            <h2>¿Buscas casos legales para resolver?</h2>
+            <p>Conéctate con clientes reales y amplía tu práctica legal. Realiza tus casos de manera presencial u totalmente online.</p>
+
+            <form id="lawyer-register-form" class="register-form">
+                <input type="text" placeholder="Nombre y Apellido" required>
+                <input type="email" placeholder="Correo electrónico" required>
+                <input type="text" placeholder="Experiencia laboral" required>
+                <textarea placeholder="Descripción de tu perfil" required></textarea>
+                <input type="password" placeholder="Contraseña" required>
+                <input type="password" placeholder="Confirma tu contraseña" required>
+                <div class="terms">
+                    <input type="checkbox" id="terms" required>
+                    <label for="terms">Acepto los términos y condiciones</label>
+                </div>
+                <button type="submit" class="submit-btn">Crear cuenta</button>
+            </form>
+        </section>
+
+        <section class="benefits-section">
+            <h2>Beneficios para Abogados</h2>
+            <div class="benefits-grid">
+                <div class="benefit-item">
+                    <i class="fas fa-user-tie"></i>
+                    <h3>Incluye experiencias, especialidades, certificaciones y tarifas</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-briefcase"></i>
+                    <h3>Encuentra oportunidades según tu experiencia laboral</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-tasks"></i>
+                    <h3>Gestiona casos de manera eficiente</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-users"></i>
+                    <h3>Accede a clientes que necesitan servicios legales</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-folder-open"></i>
+                    <h3>Herramientas para gestionar casos y documentos</h3>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-bell"></i>
+                    <h3>Notificaciones sobre nuevos casos relevantes</h3>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeLoginModal()">&times;</span>
+            <h2>Iniciar sesión</h2>
+            <form id="login-form">
+                <input type="email" id="login-email" placeholder="Correo electrónico" required>
+                <input type="password" id="login-password" placeholder="Contraseña" required>
+                <button type="submit" class="submit-btn">Iniciar sesión</button>
+                <div class="form-links">
+                    <a href="#" onclick="showForgotPassword()">Olvidé contraseña</a>
+                    <a href="#" onclick="showForgotEmail()">Olvidé qué correo utilicé</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="scripts/script.js"></script>
+</body>
+</html>

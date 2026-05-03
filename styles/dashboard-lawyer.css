@@ -1,0 +1,255 @@
+:root {
+  --primary: #2c3e50;
+  --primary-dark: #1a252f;
+  --secondary: #34495e;
+  --accent: #3498db;
+  --background: #ecf0f1;
+  --text: #2c3e50;
+  --text-light: #7f8c8d;
+  --border: #bdc3c7;
+  --hover: #e0e6e8;
+  --sidebar-width: 280px;
+  --header-height: 60px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Arial", sans-serif;
+  line-height: 1.6;
+  color: var(--text);
+  background-color: var(--background);
+}
+
+.dashboard-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar Styles */
+.sidebar {
+  width: var(--sidebar-width);
+  background-color: var(--primary);
+  border-right: 1px solid var(--border);
+  height: 100vh;
+  position: fixed;
+  overflow-y: auto;
+  transition: transform 0.3s ease;
+}
+
+.sidebar-header {
+  padding: 1.5rem;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--primary-dark);
+}
+
+.logo {
+  max-width: 120px;
+  height: auto;
+}
+
+.sidebar-nav {
+  padding: 1rem;
+}
+
+.nav-section {
+  margin-bottom: 1.5rem;
+}
+
+.nav-section h2 {
+  color: var(--background);
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.nav-section h2:hover {
+  background-color: var(--secondary);
+}
+
+.nav-section h3 {
+  color: var(--text-light);
+  font-size: 1rem;
+  margin: 0.75rem 0 0.5rem 0.5rem;
+  padding: 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.nav-section h3:hover {
+  background-color: var(--secondary);
+}
+
+.nav-section ul {
+  list-style: none;
+  padding-left: 1rem;
+}
+
+.nav-section ul ul {
+  padding-left: 1.5rem;
+}
+
+.nav-section a {
+  color: var(--text-light);
+  text-decoration: none;
+  display: block;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.nav-section a:hover {
+  color: var(--background);
+  background-color: var(--secondary);
+}
+
+.nav-section a.active {
+  color: var(--background);
+  background-color: var(--secondary);
+  font-weight: 500;
+}
+
+/* Main Content Styles */
+.main-content {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+}
+
+.dashboard-header {
+  height: var(--header-height);
+  background-color: white;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.user-welcome {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.content-area {
+  padding: 2rem;
+}
+
+.section-content {
+  display: none;
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.section-content.active {
+  display: block;
+}
+
+.section-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.summary-card {
+  background: var(--background);
+  padding: 1.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  transition: transform 0.3s ease;
+}
+
+.summary-card:hover {
+  transform: translateY(-2px);
+}
+
+.summary-card h4 {
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+}
+
+/* Mobile Styles */
+.sidebar-toggle {
+  display: none;
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1000;
+  background: white;
+  border: 1px solid var(--border);
+  padding: 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--primary);
+}
+
+@media (max-width: 768px) {
+  .sidebar-toggle {
+    display: block;
+  }
+
+  .sidebar {
+    transform: translateX(-100%);
+    z-index: 999;
+  }
+
+  .sidebar.active {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    margin-left: 0;
+  }
+
+  .dashboard-header {
+    padding-left: 4rem;
+  }
+}
+
+.dashboard-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.summary-section {
+  background-color: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.summary-section h3 {
+  color: var(--primary);
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+}
+
+.summary-section p {
+  margin-bottom: 0.5rem;
+  color: var(--text);
+}
+
+.logo-link {
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+.logo-link:hover {
+  transform: scale(1.05);
+}
+
