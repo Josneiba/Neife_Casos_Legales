@@ -101,6 +101,12 @@ export default function CasesPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [docUploading, setDocUploading] = useState(false)
   const docInputRef = useRef<HTMLInputElement>(null)
+  const [newCaseForm, setNewCaseForm] = useState({
+    title: "",
+    area: "",
+    description: "",
+    budget: 150,
+  })
 
   useEffect(() => {
     const supabase = createClient()
@@ -171,10 +177,27 @@ export default function CasesPage() {
 
   const handleCreateCase = async (e: React.FormEvent) => {
     e.preventDefault()
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user || !newCaseForm.title || !newCaseForm.description) return
     setNewCaseLoading(true)
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await supabase.from("cases").insert({
+      title: newCaseForm.title,
+      type: newCaseForm.area,
+      description: newCaseForm.description,
+      budget: newCaseForm.budget,
+      client_id: user.id,
+      status: "pending",
+    })
+    const updated = await getClientCases(user.id)
+    const list = (updated ?? []).map((row) =>
+      normalizeClientCase(row as Record<string, unknown>)
+    )
+    setCases(list)
+    if (list.length > 0) setSelectedCaseId(list[0].id)
     setNewCaseLoading(false)
     setShowNewCaseModal(false)
+    setNewCaseForm({ title: "", area: "", description: "", budget: 150 })
   }
 
   if (loading) {
@@ -648,6 +671,8 @@ export default function CasesPage() {
                 </label>
                 <input
                   type="text"
+                  value={newCaseForm.title}
+                  onChange={(e) => setNewCaseForm({ ...newCaseForm, title: e.target.value })}
                   className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C]"
                   placeholder="Ej: Demanda laboral"
                 />
@@ -657,7 +682,11 @@ export default function CasesPage() {
                 <label className="block text-sm font-medium text-[#2D3C3C] mb-1">
                   Área legal
                 </label>
-                <select className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C]">
+                <select
+                  value={newCaseForm.area}
+                  onChange={(e) => setNewCaseForm({ ...newCaseForm, area: e.target.value })}
+                  className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C]"
+                >
                   <option value="">Selecciona un área</option>
                   {specialties.map((s) => (
                     <option key={s} value={s}>{s}</option>
@@ -671,6 +700,8 @@ export default function CasesPage() {
                 </label>
                 <textarea
                   rows={4}
+                  value={newCaseForm.description}
+                  onChange={(e) => setNewCaseForm({ ...newCaseForm, description: e.target.value })}
                   className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C]"
                   placeholder="Describe tu caso..."
                 ></textarea>
@@ -678,13 +709,14 @@ export default function CasesPage() {
 
               <div>
                 <label className="block text-sm font-medium text-[#2D3C3C] mb-2">
-                  Presupuesto disponible
+                  Presupuesto disponible: <span className="font-bold text-[#2D3C3C]">${newCaseForm.budget}/hr</span>
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="500"
-                  defaultValue="150"
+                  value={newCaseForm.budget}
+                  onChange={(e) => setNewCaseForm({ ...newCaseForm, budget: parseInt(e.target.value) })}
                   className="w-full accent-[#5E8B8C]"
                 />
                 <div className="flex justify-between text-sm text-[#75524C]">
