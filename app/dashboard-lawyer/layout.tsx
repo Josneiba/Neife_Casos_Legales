@@ -18,6 +18,8 @@ import {
   Calendar,
   DollarSign,
 } from "lucide-react"
+import { signOut } from "@/lib/actions/auth"
+import { createClient } from "@/lib/supabase/client"
 
 const mockNotifications = [
   { id: 1, icon: MessageSquare, color: "text-[#C27F79]", text: "Javiera Fernández te envió un mensaje", time: "hace 5 min", unread: true },
@@ -42,6 +44,27 @@ export default function LawyerDashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const notificationRef = useRef<HTMLDivElement>(null)
+  const [userName, setUserName] = useState("Abogado")
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        setUserName(
+          (user.user_metadata?.full_name as string | undefined) ??
+            user.email ??
+            "Abogado"
+        )
+      }
+    })
+  }, [])
+
+  const userInitials = userName
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
 
   // Close notification dropdown when clicking outside
   useEffect(() => {
@@ -148,21 +171,23 @@ export default function LawyerDashboardLayout({
         {/* User section */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-[#75524C]/30">
           <div className="flex items-center gap-3 px-4 py-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#75524C] to-[#2D3C3C] flex items-center justify-center text-white font-bold">
-              MG
+            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#75524C] to-[#2D3C3C] flex items-center justify-center text-white font-bold text-sm">
+              {userInitials || "A"}
             </div>
-            <div className="flex-1">
-              <p className="text-white font-medium text-sm">Dra. María González</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-medium text-sm truncate">{userName}</p>
               <p className="text-white/50 text-xs">Abogado</p>
             </div>
           </div>
-          <Link
-            href="/login"
-            className="flex items-center gap-3 px-4 py-2 text-white/70 hover:text-white transition-colors"
-          >
-            <LogOut size={18} />
-            <span className="text-sm">Cerrar Sesión</span>
-          </Link>
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="flex items-center gap-3 px-4 py-2 text-white/70 hover:text-white transition-colors w-full text-left text-sm"
+            >
+              <LogOut size={18} />
+              <span>Cerrar Sesión</span>
+            </button>
+          </form>
         </div>
       </aside>
 
@@ -218,8 +243,8 @@ export default function LawyerDashboardLayout({
                 </div>
               )}
             </div>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#75524C] to-[#2D3C3C] flex items-center justify-center text-white font-bold">
-              MG
+            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#75524C] to-[#2D3C3C] flex items-center justify-center text-white font-bold text-sm">
+              {userInitials || "A"}
             </div>
           </div>
         </header>

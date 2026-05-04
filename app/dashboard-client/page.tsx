@@ -12,17 +12,92 @@ import {
   FileText,
   MessageCircle,
 } from "lucide-react"
-import { mockCases, mockActivity, statusConfig } from "@/lib/data"
+import { statusConfig } from "@/lib/data"
+import { getClientCases } from "@/lib/queries/cases"
+import { getRecentActivitiesForClient } from "@/lib/queries/case-detail"
+import { createClient } from "@/lib/supabase/client"
+
+type HomeCase = {
+  id: string
+  title: string
+  type: string
+  status: keyof typeof statusConfig
+  progress: number
+  lastUpdate: string
+  nextAction: string
+  lawyer: { name: string; specialization: string }
+}
+
+function normalizeHomeCase(c: Record<string, unknown>): HomeCase {
+  const lawyer = c.lawyer as
+    | {
+        full_name?: string | null
+        lawyer_profiles?: { specialties?: string[] | null } | null
+      }
+    | null
+    | undefined
+  const lp = lawyer?.lawyer_profiles
+  const st = (c.status as string) ?? "waiting"
+  const statusKey = st in statusConfig ? (st as keyof typeof statusConfig) : "waiting"
+  return {
+    id: String(c.id),
+    title: String(c.title ?? ""),
+    type: String(c.type ?? ""),
+    status: statusKey,
+    progress: Number(c.progress ?? 0),
+    lastUpdate: c.updated_at
+      ? new Date(c.updated_at as string).toLocaleDateString("es-CL")
+      : "",
+    nextAction: String(c.next_action ?? ""),
+    lawyer: {
+      name: lawyer?.full_name ?? "—",
+      specialization: lp?.specialties?.[0] ?? "",
+    },
+  }
+}
+
+type ActivityRow = {
+  id: string
+  case_id: string
+  type: string
+  title: string
+  description: string | null
+  created_at: string
+}
 
 export default function ClientDashboardHome() {
   const [loading, setLoading] = useState(true)
+  const [cases, setCases] = useState<HomeCase[]>([])
+  const [activityFeed, setActivityFeed] = useState<ActivityRow[]>([])
+  const [userName, setUserName] = useState("Usuario")
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800)
-    return () => clearTimeout(timer)
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        setLoading(false)
+        return
+      }
+      const first =
+        (user.user_metadata?.full_name as string | undefined)?.split(" ")[0] ??
+        "Usuario"
+      setUserName(first)
+      Promise.all([
+        getClientCases(user.id),
+        getRecentActivitiesForClient(user.id, 8),
+      ]).then(([data, acts]) => {
+        setCases(
+          (data ?? []).map((row) =>
+            normalizeHomeCase(row as Record<string, unknown>)
+          )
+        )
+        setActivityFeed((acts ?? []) as ActivityRow[])
+        setLoading(false)
+      })
+    })
   }, [])
 
-  const activeCases = mockCases.filter((c) => c.status === "active")
+  const activeCases = cases.filter((c) => c.status === "active")
 
   const stats = [
     {
@@ -85,7 +160,7 @@ export default function ClientDashboardHome() {
       {/* Welcome banner */}
       <div className="bg-white border border-[#D5C3B6]/30 rounded-lg shadow-sm p-6">
         <h1 className="text-2xl font-bold text-[#2D3C3C]">
-          Bienvenido, Javiera
+          Bienvenido, {userName}
         </h1>
         <p className="text-[#75524C]">
           {new Date().toLocaleDateString("es-CL", {
@@ -147,7 +222,7 @@ export default function ClientDashboardHome() {
           </Link>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {activeCases.slice(0, 2).map((caseItem) => {
+          {(activeCases.length > 0 ? activeCases.slice(0, 2) : []).map((caseItem) => {
             const status = statusConfig[caseItem.status]
             return (
               <div
@@ -236,32 +311,42 @@ export default function ClientDashboardHome() {
       <div>
         <h2 className="text-lg font-bold text-[#2D3C3C] mb-4">Actividad Reciente</h2>
         <div className="bg-white border border-[#D5C3B6]/30 rounded-lg shadow-sm">
-          {mockActivity.slice(0, 5).map((activity, index) => {
-            const icons: Record<string, typeof Folder> = {
-              folder: Folder,
-              message: MessageCircle,
-              file: FileText,
-              calendar: Calendar,
-            }
-            const Icon = icons[activity.icon] || Folder
-
-            return (
-              <div
-                key={activity.id}
-                className={`flex items-center gap-4 p-4 ${
-                  index !== mockActivity.length - 1 ? "border-b border-[#D5C3B6]/30" : ""
-                }`}
-              >
-                <div className="w-10 h-10 rounded-full bg-[#5E8B8C]/10 flex items-center justify-center">
-                  <Icon className="text-[#5E8B8C]" size={18} />
+          {activityFeed.length === 0 ? (
+            <p className="p-6 text-sm text-[#75524C]">Aún no hay actividad en tus casos.</p>
+          ) : (
+            activityFeed.map((row, index) => {
+              const t = (row.type || "").toLowerCase()
+              let Icon = Folder
+              if (t.includes("document")) Icon = FileText
+              else if (t.includes("message")) Icon = MessageCircle
+              const caseTitle = cases.find((c) => c.id === row.case_id)?.title
+              const when = row.created_at
+                ? new Date(row.created_at).toLocaleString("es-CL")
+                : ""
+              return (
+                <div
+                  key={row.id}
+                  className={`flex items-center gap-4 p-4 ${
+                    index !== activityFeed.length - 1 ? "border-b border-[#D5C3B6]/30" : ""
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#5E8B8C]/10 flex items-center justify-center">
+                    <Icon className="text-[#5E8B8C]" size={18} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-[#2D3C3C] font-medium">{row.title}</p>
+                    {row.description ? (
+                      <p className="text-xs text-[#75524C] truncate">{row.description}</p>
+                    ) : null}
+                    {caseTitle ? (
+                      <p className="text-xs text-[#D5C3B6] mt-0.5">Caso: {caseTitle}</p>
+                    ) : null}
+                    <p className="text-xs text-[#75524C] mt-1">{when}</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm text-[#2D3C3C]">{activity.message}</p>
-                  <p className="text-xs text-[#75524C]">{activity.time}</p>
-                </div>
-              </div>
-            )
-          })}
+              )
+            })
+          )}
         </div>
       </div>
     </div>

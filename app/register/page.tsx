@@ -2,14 +2,14 @@
 
 import { Suspense, useState, useEffect } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { Scale, Briefcase, Check, Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react"
 import { specialties, cities } from "@/lib/data"
+import { signUp } from "@/lib/actions/auth"
 
 type Role = "client" | "lawyer" | null
 
 function RegisterPageContent() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [step, setStep] = useState(1)
   const [role, setRole] = useState<Role>(null)
@@ -33,6 +33,7 @@ function RegisterPageContent() {
   })
   
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [submitError, setSubmitError] = useState("")
 
   const getPasswordStrength = (password: string) => {
     if (password.length === 0) return { level: 0, label: "", color: "" }
@@ -83,16 +84,36 @@ function RegisterPageContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+    setSubmitError("")
+    if (formData.password !== formData.confirmPassword) {
+      setErrors({ confirmPassword: "Las contraseñas no coinciden" })
+      return
+    }
     if (!validateStep2()) return
-    
+    if (!role) return
+
     setLoading(true)
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    if (role === "lawyer") {
-      router.push("/dashboard-lawyer")
-    } else {
-      router.push("/dashboard-client")
+    try {
+      const result = await signUp({
+        email: formData.email,
+        password: formData.password,
+        full_name: formData.name,
+        role,
+        city: formData.city,
+        hourly_rate:
+          role === "lawyer" ? Number(formData.hourlyRate) : undefined,
+        license_number:
+          role === "lawyer" ? formData.barNumber : undefined,
+        specialty: role === "lawyer" ? formData.specialty : undefined,
+        budget: role === "client" ? budgetRange[1] : undefined,
+      })
+      if (result?.error) {
+        setSubmitError(result.error)
+      }
+    } catch {
+      // redirect
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -209,6 +230,11 @@ function RegisterPageContent() {
               </p>
 
               <form onSubmit={handleSubmit} className="space-y-4">
+                {submitError && (
+                  <p className="text-sm text-[#C27F79] text-center bg-[#C27F79]/10 py-2 rounded-lg">
+                    {submitError}
+                  </p>
+                )}
                 {/* Common Fields */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>

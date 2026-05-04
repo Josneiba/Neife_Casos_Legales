@@ -2,6 +2,7 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { sendTransactionalEmail } from "@/lib/email"
 
 export async function createCase(data: {
   title: string
@@ -50,6 +51,20 @@ export async function createCase(data: {
     created_by: user.id,
   })
 
+  const { data: peeps } = await supabase
+    .from("profiles")
+    .select("id, email, full_name")
+    .in("id", [user.id, data.lawyer_id])
+  const lawyer = peeps?.find((p) => p.id === data.lawyer_id)
+  const client = peeps?.find((p) => p.id === user.id)
+  if (lawyer?.email) {
+    await sendTransactionalEmail({
+      to: lawyer.email,
+      subject: `Neife — Nuevo caso: ${data.title}`,
+      html: `<p>Hola ${lawyer.full_name ?? ""},</p><p><strong>${client?.full_name ?? "Un cliente"}</strong> te ha enviado una solicitud de caso.</p><p><strong>Título:</strong> ${data.title}</p><p>Revisa tu panel en Neife.</p>`,
+    })
+  }
+
   revalidatePath("/dashboard-client/cases")
   return { success: true as const, caseId: newCase.id }
 }
@@ -96,6 +111,24 @@ export async function acceptCaseRequest(requestId: string) {
     { onConflict: "client_id,lawyer_id" }
   )
 
+  const { data: caseRow } = await supabase
+    .from("cases")
+    .select("title")
+    .eq("id", request.case_id)
+    .single()
+  const { data: clientProf } = await supabase
+    .from("profiles")
+    .select("email, full_name")
+    .eq("id", request.client_id)
+    .single()
+  if (clientProf?.email) {
+    await sendTransactionalEmail({
+      to: clientProf.email,
+      subject: `Neife — Tu caso fue aceptado`,
+      html: `<p>Hola ${clientProf.full_name ?? ""},</p><p>Tu solicitud para el caso <strong>${caseRow?.title ?? ""}</strong> fue <strong>aceptada</strong> por tu abogado.</p>`,
+    })
+  }
+
   revalidatePath("/dashboard-lawyer/cases")
   revalidatePath("/dashboard-client/cases")
   return { success: true as const }
@@ -108,9 +141,9 @@ export async function rejectCaseRequest(requestId: string) {
   } = await supabase.auth.getUser()
   if (!user) return { error: "No autenticado" }
 
-  const { data: request } = await supabase
+  const { data: reqRow } = await supabase
     .from("case_requests")
-    .select("case_id")
+    .select("case_id, client_id, cases(title)")
     .eq("id", requestId)
     .single()
 
@@ -119,11 +152,28 @@ export async function rejectCaseRequest(requestId: string) {
     .update({ status: "rejected", responded_at: new Date().toISOString() })
     .eq("id", requestId)
 
-  if (request?.case_id) {
+  if (reqRow?.case_id) {
     await supabase
       .from("cases")
       .update({ status: "rejected" })
-      .eq("id", request.case_id)
+      .eq("id", reqRow.case_id)
+  }
+
+  const clientId = reqRow?.client_id as string | undefined
+  const caseTitle = (reqRow?.cases as { title?: string } | null)?.title
+  if (clientId) {
+    const { data: clientProf } = await supabase
+      .from("profiles")
+      .select("email, full_name")
+      .eq("id", clientId)
+      .single()
+    if (clientProf?.email) {
+      await sendTransactionalEmail({
+        to: clientProf.email,
+        subject: `Neife — Actualización de tu solicitud`,
+        html: `<p>Hola ${clientProf.full_name ?? ""},</p><p>Tu solicitud para el caso <strong>${caseTitle ?? ""}</strong> no fue aceptada en esta ocasión.</p>`,
+      })
+    }
   }
 
   revalidatePath("/dashboard-lawyer/cases")
@@ -153,6 +203,26 @@ export async function updateCaseStatus(caseId: string, status: string) {
     description: `Estado cambiado a ${status}`,
     created_by: user.id,
   })
+
+  const { data: cRow } = await supabase
+    .from("cases")
+    .select("client_id, title")
+    .eq("id", caseId)
+    .single()
+  if (cRow?.client_id) {
+    const { data: clientProf } = await supabase
+      .from("profiles")
+      .select("email, full_name")
+      .eq("id", cRow.client_id)
+      .single()
+    if (clientProf?.email) {
+      await sendTransactionalEmail({
+        to: clientProf.email,
+        subject: `Neife — Estado del caso actualizado`,
+        html: `<p>Hola ${clientProf.full_name ?? ""},</p><p>El estado de tu caso <strong>${cRow.title ?? ""}</strong> cambió a <strong>${status}</strong>.</p>`,
+      })
+    }
+  }
 
   revalidatePath("/dashboard-lawyer/cases")
   revalidatePath("/dashboard-client/cases")

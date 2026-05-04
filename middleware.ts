@@ -1,36 +1,30 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { createMiddlewareSupabase } from "@/utils/supabase/middleware"
 
 export async function middleware(request: NextRequest) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !anon) {
-    return NextResponse.next({ request: { headers: request.headers } })
+  const { supabase, response } = createMiddlewareSupabase(request)
+
+  if (!supabase) {
+    return response
   }
-
-  let response = NextResponse.next({ request: { headers: request.headers } })
-
-  const supabase = createServerClient(url, anon, {
-    cookies: {
-      get(name: string) {
-        return request.cookies.get(name)?.value
-      },
-      set(name: string, value: string, options: CookieOptions) {
-        request.cookies.set({ name, value, ...options })
-        response = NextResponse.next({ request: { headers: request.headers } })
-        response.cookies.set({ name, value, ...options })
-      },
-      remove(name: string, options: CookieOptions) {
-        request.cookies.set({ name, value: "", ...options })
-        response = NextResponse.next({ request: { headers: request.headers } })
-        response.cookies.set({ name, value: "", ...options })
-      },
-    },
-  })
 
   const {
     data: { user },
   } = await supabase.auth.getUser()
+
+  if (request.nextUrl.pathname.startsWith("/admin")) {
+    if (!user) {
+      return NextResponse.redirect(new URL("/login", request.url))
+    }
+    const admins = (process.env.NEIFE_ADMIN_USER_IDS ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (!admins.includes(user.id)) {
+      return NextResponse.redirect(new URL("/dashboard-client", request.url))
+    }
+    return response
+  }
 
   if (!user && request.nextUrl.pathname.startsWith("/dashboard")) {
     return NextResponse.redirect(new URL("/login", request.url))
@@ -46,9 +40,9 @@ export async function middleware(request: NextRequest) {
       .eq("id", user.id)
       .single()
 
-    const redirect =
+    const redirectPath =
       profile?.role === "lawyer" ? "/dashboard-lawyer" : "/dashboard-client"
-    return NextResponse.redirect(new URL(redirect, request.url))
+    return NextResponse.redirect(new URL(redirectPath, request.url))
   }
 
   return response
@@ -58,6 +52,7 @@ export const config = {
   matcher: [
     "/dashboard-client/:path*",
     "/dashboard-lawyer/:path*",
+    "/admin/:path*",
     "/login",
     "/register",
   ],

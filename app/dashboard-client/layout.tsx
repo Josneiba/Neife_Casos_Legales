@@ -17,6 +17,8 @@ import {
   FileText,
   Calendar,
 } from "lucide-react"
+import { signOut } from "@/lib/actions/auth"
+import { createClient } from "@/lib/supabase/client"
 
 const mockNotifications = [
   { id: 1, icon: MessageSquare, color: "text-[#C27F79]", text: "Dra. González te envió un mensaje", time: "hace 5 min", unread: true },
@@ -41,6 +43,27 @@ export default function ClientDashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const notificationRef = useRef<HTMLDivElement>(null)
+  const [userName, setUserName] = useState("Usuario")
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        setUserName(
+          (user.user_metadata?.full_name as string | undefined) ??
+            user.email ??
+            "Usuario"
+        )
+      }
+    })
+  }, [])
+
+  const userInitials = userName
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
 
   // Close notification dropdown when clicking outside
   useEffect(() => {
@@ -147,21 +170,23 @@ export default function ClientDashboardLayout({
         {/* User section */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-[#5E8B8C]/30">
           <div className="flex items-center gap-3 px-4 py-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white font-bold">
-              JF
+            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white font-bold text-sm">
+              {userInitials || "U"}
             </div>
-            <div className="flex-1">
-              <p className="text-white font-medium text-sm">Javiera Fernández</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-medium text-sm truncate">{userName}</p>
               <p className="text-white/50 text-xs">Cliente</p>
             </div>
           </div>
-          <Link
-            href="/login"
-            className="flex items-center gap-3 px-4 py-2 text-white/70 hover:text-white transition-colors"
-          >
-            <LogOut size={18} />
-            <span className="text-sm">Cerrar Sesión</span>
-          </Link>
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="flex items-center gap-3 px-4 py-2 text-white/70 hover:text-white transition-colors w-full text-left text-sm"
+            >
+              <LogOut size={18} />
+              <span>Cerrar Sesión</span>
+            </button>
+          </form>
         </div>
       </aside>
 
@@ -217,8 +242,8 @@ export default function ClientDashboardLayout({
                 </div>
               )}
             </div>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white font-bold">
-              JF
+            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white font-bold text-sm">
+              {userInitials || "U"}
             </div>
           </div>
         </header>

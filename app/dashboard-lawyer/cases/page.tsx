@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   FileText,
   Clock,
@@ -10,77 +10,274 @@ import {
   Loader2,
   RefreshCw,
   MessageSquare,
-  Calendar,
   Plus,
   Inbox,
 } from "lucide-react"
-import { mockCases, statusConfig, mockIncomingRequests } from "@/lib/data"
+import { statusConfig } from "@/lib/data"
+import { getLawyerCases, getIncomingRequests } from "@/lib/queries/cases"
+import {
+  acceptCaseRequest,
+  rejectCaseRequest,
+  updateCaseStatus,
+} from "@/lib/actions/cases"
+import { createClient } from "@/lib/supabase/client"
+import {
+  getCaseDocuments,
+  getCaseActivities,
+  getNextStepsForCase,
+  getCaseNote,
+} from "@/lib/queries/case-detail"
+import {
+  uploadCaseDocument,
+  getCaseDocumentSignedUrl,
+  updateNextStepCompleted,
+  addNextStepForCase,
+  saveCaseNote,
+} from "@/lib/actions/case-detail"
 
-type IncomingRequest = Omit<(typeof mockIncomingRequests)[number], "status"> & {
+type IncomingRequest = {
+  id: string
+  clientName: string
+  clientType: string
+  caseTitle: string
+  caseType: string
+  description: string
+  budget: number
+  message: string
+  submittedAt: string
   status: "pending" | "accepted" | "rejected"
 }
 
+type LawyerCaseView = {
+  id: string
+  title: string
+  type: string
+  status: keyof typeof statusConfig
+  progress: number
+  description: string
+  createdAt: string
+  lastUpdate: string
+  client: { name: string; city: string }
+}
+
+function normalizeIncomingRequest(r: Record<string, unknown>): IncomingRequest {
+  const client = r.client as { full_name?: string | null; city?: string | null } | null
+  const c = r.case as
+    | {
+        title?: string
+        type?: string
+        description?: string
+        budget?: number | null
+      }
+    | null
+  const st = (r.status as string) ?? "pending"
+  const status =
+    st === "accepted" || st === "rejected" || st === "pending"
+      ? st
+      : "pending"
+  return {
+    id: String(r.id),
+    clientName: client?.full_name ?? "—",
+    clientType: client?.city ? `Ciudad: ${client.city}` : "Cliente",
+    caseTitle: String(c?.title ?? ""),
+    caseType: String(c?.type ?? ""),
+    description: String(c?.description ?? ""),
+    budget: Number(c?.budget ?? 0),
+    message: String(r.message ?? ""),
+    submittedAt: r.created_at
+      ? new Date(r.created_at as string).toLocaleString("es-CL")
+      : "",
+    status,
+  }
+}
+
+function normalizeLawyerCase(c: Record<string, unknown>): LawyerCaseView {
+  const client = c.client as { full_name?: string | null; city?: string | null } | null
+  const st = (c.status as string) ?? "waiting"
+  const statusKey = st in statusConfig ? (st as keyof typeof statusConfig) : "waiting"
+  return {
+    id: String(c.id),
+    title: String(c.title ?? ""),
+    type: String(c.type ?? ""),
+    status: statusKey,
+    progress: Number(c.progress ?? 0),
+    description: String(c.description ?? ""),
+    createdAt: c.created_at
+      ? new Date(c.created_at as string).toLocaleDateString("es-CL")
+      : "",
+    lastUpdate: c.updated_at
+      ? new Date(c.updated_at as string).toLocaleDateString("es-CL")
+      : "",
+    client: {
+      name: client?.full_name ?? "—",
+      city: client?.city ?? "",
+    },
+  }
+}
+
 type TabType = "requests" | "active" | "pending" | "completed" | "all"
-type DetailTab = "summary" | "documents" | "activity" | "notes" | "billing"
+type DetailTab = "summary" | "documents" | "activity" | "steps" | "notes" | "billing"
+
+function activityVisual(type: string) {
+  const t = (type || "").toLowerCase()
+  if (t.includes("document")) return { Icon: FileText, bg: "bg-[#75524C]" }
+  if (t.includes("message")) return { Icon: MessageSquare, bg: "bg-[#C27F79]" }
+  if (t.includes("status") || t.includes("step")) return { Icon: RefreshCw, bg: "bg-[#5E8B8C]" }
+  return { Icon: Plus, bg: "bg-[#2D3C3C]" }
+}
 
 export default function LawyerCasesPage() {
   const [loading, setLoading] = useState(true)
+  const [cases, setCases] = useState<LawyerCaseView[]>([])
   const [activeTab, setActiveTab] = useState<TabType>("requests")
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<DetailTab>("summary")
   const [notes, setNotes] = useState("")
   const [savingNotes, setSavingNotes] = useState(false)
   const [hours, setHours] = useState("5")
-  
-  // Incoming requests state
-  const [requests, setRequests] = useState<IncomingRequest[]>(
-    mockIncomingRequests as IncomingRequest[]
-  )
+
+  const [detailDocs, setDetailDocs] = useState<Record<string, unknown>[]>([])
+  const [detailActs, setDetailActs] = useState<Record<string, unknown>[]>([])
+  const [detailSteps, setDetailSteps] = useState<Record<string, unknown>[]>([])
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [docUploading, setDocUploading] = useState(false)
+  const docInputRef = useRef<HTMLInputElement>(null)
+  const [newStepText, setNewStepText] = useState("")
+  const [newStepAssign, setNewStepAssign] = useState<"client" | "lawyer">("client")
+  const [newStepDue, setNewStepDue] = useState("")
+  const [addingStep, setAddingStep] = useState(false)
+
+  const [requests, setRequests] = useState<IncomingRequest[]>([])
   const [respondingId, setRespondingId] = useState<string | null>(null)
+
+  const refreshLawyerData = async () => {
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return
+    const [casesData, requestsData] = await Promise.all([
+      getLawyerCases(user.id),
+      getIncomingRequests(user.id),
+    ])
+    const normCases = (casesData ?? []).map((row) =>
+      normalizeLawyerCase(row as Record<string, unknown>)
+    )
+    setCases(normCases)
+    setCaseStatuses(
+      Object.fromEntries(normCases.map((c) => [c.id, c.status]))
+    )
+    setRequests(
+      (requestsData ?? []).map((row) =>
+        normalizeIncomingRequest(row as Record<string, unknown>)
+      )
+    )
+  }
 
   const handleAcceptRequest = async (requestId: string) => {
     setRespondingId(requestId)
-    await new Promise(r => setTimeout(r, 800))
-    setRequests(prev => prev.map(r => r.id === requestId ? {...r, status: "accepted" as const} : r))
+    const result = await acceptCaseRequest(requestId)
+    if ("success" in result && result.success) {
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.id === requestId ? { ...r, status: "accepted" as const } : r
+        )
+      )
+      await refreshLawyerData()
+    }
     setRespondingId(null)
   }
 
   const handleRejectRequest = async (requestId: string) => {
     setRespondingId(requestId)
-    await new Promise(r => setTimeout(r, 800))
-    setRequests(prev => prev.map(r => r.id === requestId ? {...r, status: "rejected" as const} : r))
+    await rejectCaseRequest(requestId)
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.id === requestId ? { ...r, status: "rejected" as const } : r
+      )
+    )
+    await refreshLawyerData()
     setRespondingId(null)
   }
 
-  const pendingRequestsCount = requests.filter(r => r.status === "pending").length
-  
-  // Case status management
-  const [caseStatuses, setCaseStatuses] = useState<Record<string, string>>(
-    Object.fromEntries(mockCases.map(c => [c.id, c.status]))
-  )
+  const pendingRequestsCount = requests.filter((r) => r.status === "pending").length
+
+  const [caseStatuses, setCaseStatuses] = useState<Record<string, string>>({})
   const [statusChanging, setStatusChanging] = useState(false)
   const [statusChangeSuccess, setStatusChangeSuccess] = useState(false)
 
   const handleStatusChange = async (caseId: string, newStatus: string) => {
     setStatusChanging(true)
-    await new Promise(r => setTimeout(r, 600))
-    setCaseStatuses(prev => ({ ...prev, [caseId]: newStatus }))
+    await updateCaseStatus(caseId, newStatus)
+    setCaseStatuses((prev) => ({ ...prev, [caseId]: newStatus }))
+    setCases((prev) =>
+      prev.map((c) => (c.id === caseId ? { ...c, status: newStatus as LawyerCaseView["status"] } : c))
+    )
     setStatusChanging(false)
     setStatusChangeSuccess(true)
     setTimeout(() => setStatusChangeSuccess(false), 2000)
   }
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800)
-    return () => clearTimeout(timer)
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        setLoading(false)
+        return
+      }
+      Promise.all([getLawyerCases(user.id), getIncomingRequests(user.id)]).then(
+        ([casesData, requestsData]) => {
+          const normCases = (casesData ?? []).map((row) =>
+            normalizeLawyerCase(row as Record<string, unknown>)
+          )
+          setCases(normCases)
+          setCaseStatuses(
+            Object.fromEntries(normCases.map((c) => [c.id, c.status]))
+          )
+          setRequests(
+            (requestsData ?? []).map((row) =>
+              normalizeIncomingRequest(row as Record<string, unknown>)
+            )
+          )
+          setLoading(false)
+        }
+      )
+    })
   }, [])
 
-  const filteredCases = mockCases.filter((c) => {
+  const refreshCaseDetail = async (caseId: string) => {
+    const [d, a, s] = await Promise.all([
+      getCaseDocuments(caseId),
+      getCaseActivities(caseId),
+      getNextStepsForCase(caseId),
+    ])
+    setDetailDocs(d as Record<string, unknown>[])
+    setDetailActs(a as Record<string, unknown>[])
+    setDetailSteps(s as Record<string, unknown>[])
+  }
+
+  useEffect(() => {
+    if (!selectedCaseId) return
+    const supabase = createClient()
+    setDetailLoading(true)
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) {
+        setDetailLoading(false)
+        return
+      }
+      await refreshCaseDetail(selectedCaseId)
+      const note = await getCaseNote(selectedCaseId, user.id)
+      setNotes(String(note?.content ?? ""))
+      setDetailLoading(false)
+    })
+  }, [selectedCaseId])
+
+  const filteredCases = cases.filter((c) => {
     if (activeTab === "all") return true
     return caseStatuses[c.id] === activeTab
   })
 
-  const selectedCase = mockCases.find((c) => c.id === selectedCaseId)
+  const selectedCase = cases.find((c) => c.id === selectedCaseId)
 
   const tabs: { key: TabType; label: string; badge?: number }[] = [
     { key: "requests", label: "Solicitudes", badge: pendingRequestsCount },
@@ -93,13 +290,15 @@ export default function LawyerCasesPage() {
     { key: "summary", label: "Resumen" },
     { key: "documents", label: "Documentos" },
     { key: "activity", label: "Actividad" },
+    { key: "steps", label: "Próximos Pasos" },
     { key: "notes", label: "Notas Privadas" },
     { key: "billing", label: "Facturación" },
   ]
 
   const handleSaveNotes = async () => {
+    if (!selectedCaseId) return
     setSavingNotes(true)
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await saveCaseNote(selectedCaseId, notes)
     setSavingNotes(false)
   }
 
@@ -287,7 +486,9 @@ export default function LawyerCasesPage() {
                       {status.label}
                     </span>
                   </div>
-                  <p className="text-xs text-[#75524C] mb-1">Cliente: Javiera Fernandez</p>
+                  <p className="text-xs text-[#75524C] mb-1">
+                    Cliente: {caseItem.client.name}
+                  </p>
                   <div className="flex items-center justify-between text-xs text-[#75524C]">
                     <span>{caseItem.lastUpdate}</span>
                     <span className="text-[#75524C]">{caseItem.progress}%</span>
@@ -361,7 +562,7 @@ export default function LawyerCasesPage() {
                         JF
                       </div>
                       <div>
-                        <p className="font-bold text-[#2D3C3C]">Javiera Fernández</p>
+                        <p className="font-bold text-[#2D3C3C]">{selectedCase.client.name}</p>
                         <p className="text-sm text-[#75524C]">Cliente</p>
                       </div>
                     </div>
@@ -374,7 +575,12 @@ export default function LawyerCasesPage() {
                       </div>
                       <div className="h-3 bg-[#D5C3B6]/30 rounded-full">
                         <div
-                          className={`h-3 rounded-full ${statusConfig[selectedCase.status].bg}`}
+                          className={`h-3 rounded-full ${
+                            statusConfig[
+                              (caseStatuses[selectedCase.id] ??
+                                selectedCase.status) as keyof typeof statusConfig
+                            ].bg
+                          }`}
                           style={{ width: `${selectedCase.progress}%` }}
                         ></div>
                       </div>
@@ -402,68 +608,230 @@ export default function LawyerCasesPage() {
 
                 {detailTab === "documents" && (
                   <div className="space-y-4">
+                    <input
+                      ref={docInputRef}
+                      type="file"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (!file || !selectedCaseId) return
+                        setDocUploading(true)
+                        const fd = new FormData()
+                        fd.append("case_id", selectedCaseId)
+                        fd.append("file", file)
+                        await uploadCaseDocument(fd)
+                        e.target.value = ""
+                        await refreshCaseDetail(selectedCaseId)
+                        setDocUploading(false)
+                      }}
+                    />
+                    <div className="border-2 border-dashed border-[#D5C3B6] rounded-lg p-6 text-center">
+                      <button
+                        type="button"
+                        disabled={docUploading || !selectedCaseId}
+                        onClick={() => docInputRef.current?.click()}
+                        className="text-[#75524C] hover:text-[#2D3C3C] text-sm disabled:opacity-50"
+                      >
+                        {docUploading ? "Subiendo…" : "+ Subir documento al caso"}
+                      </button>
+                    </div>
                     <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-[#D5C3B6]/30">
-                            <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Nombre</th>
-                            <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Fecha</th>
-                            <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Subido por</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[
-                            { name: "Certificado de Matrimonio.pdf", date: "15/01/2024", by: "Cliente" },
-                            { name: "Carnet de Identidad.pdf", date: "15/01/2024", by: "Cliente" },
-                            { name: "Acuerdo Preliminar.docx", date: "20/01/2024", by: "Abogado" },
-                          ].map((doc, i) => (
-                            <tr key={i} className="border-b border-[#D5C3B6]/30 hover:bg-[#F8F7F4]">
-                              <td className="py-3 px-4">
-                                <div className="flex items-center gap-2">
-                                  <FileText size={16} className="text-[#75524C]" />
-                                  <span className="text-sm text-[#2D3C3C]">{doc.name}</span>
-                                </div>
-                              </td>
-                              <td className="py-3 px-4 text-sm text-[#75524C]">{doc.date}</td>
-                              <td className="py-3 px-4 text-sm text-[#75524C]">{doc.by}</td>
+                      {detailLoading ? (
+                        <p className="text-sm text-[#75524C] py-4">Cargando…</p>
+                      ) : (
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-[#D5C3B6]/30">
+                              <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Nombre</th>
+                              <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Fecha</th>
+                              <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Subido por</th>
+                              <th className="text-right py-3 px-4 text-sm font-medium text-[#75524C]"> </th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {detailDocs.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="py-6 text-center text-sm text-[#75524C]">
+                                  Sin documentos.
+                                </td>
+                              </tr>
+                            ) : (
+                              detailDocs.map((doc) => {
+                                const path = String(doc.file_url ?? "")
+                                const created = doc.created_at
+                                  ? new Date(doc.created_at as string).toLocaleDateString("es-CL")
+                                  : ""
+                                const role = doc.uploaded_by_role as string | undefined
+                                const by =
+                                  role === "lawyer" ? "Abogado" : role === "client" ? "Cliente" : "—"
+                                return (
+                                  <tr key={String(doc.id)} className="border-b border-[#D5C3B6]/30 hover:bg-[#F8F7F4]">
+                                    <td className="py-3 px-4">
+                                      <div className="flex items-center gap-2">
+                                        <FileText size={16} className="text-[#75524C]" />
+                                        <span className="text-sm text-[#2D3C3C]">{String(doc.name)}</span>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-4 text-sm text-[#75524C]">{created}</td>
+                                    <td className="py-3 px-4 text-sm text-[#75524C]">{by}</td>
+                                    <td className="py-3 px-4 text-right">
+                                      <button
+                                        type="button"
+                                        className="text-sm text-[#75524C] hover:underline"
+                                        onClick={async () => {
+                                          const r = await getCaseDocumentSignedUrl(path)
+                                          if ("url" in r && r.url) window.open(r.url, "_blank", "noopener,noreferrer")
+                                        }}
+                                      >
+                                        Descargar
+                                      </button>
+                                    </td>
+                                  </tr>
+                                )
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      )}
                     </div>
                   </div>
                 )}
                 
                 {detailTab === "activity" && (
                   <div className="relative">
-                    {/* Timeline vertical line */}
                     <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-[#D5C3B6]/50" />
-                    
-                    {[
-                      { date: "25 Ene 2024", event: "Documento subido", detail: "Acuerdo Preliminar.docx enviado al cliente", icon: FileText, bgColor: "bg-[#75524C]" },
-                      { date: "22 Ene 2024", event: "Estado actualizado", detail: "El caso pasó a estado 'Activo'", icon: RefreshCw, bgColor: "bg-[#5E8B8C]" },
-                      { date: "20 Ene 2024", event: "Mensaje enviado", detail: "Enviaste un mensaje al cliente", icon: MessageSquare, bgColor: "bg-[#C27F79]" },
-                      { date: "18 Ene 2024", event: "Cita agendada", detail: "Reunión programada para el 25 de Enero", icon: Calendar, bgColor: "bg-[#F2C94C]" },
-                      { date: "15 Ene 2024", event: "Caso aceptado", detail: "Aceptaste trabajar en este caso", icon: CheckCircle, bgColor: "bg-[#5E8B8C]" },
-                      { date: "14 Ene 2024", event: "Caso creado", detail: "El cliente inició el caso", icon: Plus, bgColor: "bg-[#2D3C3C]" },
-                    ].map((item, index) => {
-                      const ItemIcon = item.icon
-                      return (
-                      <div key={index} className="flex gap-4 mb-6 relative">
-                        {/* Icon circle on the line */}
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ${item.bgColor}`}>
-                          <ItemIcon size={16} className={item.bgColor === "bg-[#F2C94C]" ? "text-[#2D3C3C]" : "text-white"} />
+                    {detailLoading ? (
+                      <p className="text-sm text-[#75524C] pl-14 py-4">Cargando…</p>
+                    ) : detailActs.length === 0 ? (
+                      <p className="text-sm text-[#75524C] pl-14 py-4">Sin actividad.</p>
+                    ) : (
+                      detailActs.map((row) => {
+                        const { Icon, bg } = activityVisual(String(row.type ?? ""))
+                        const when = row.created_at
+                          ? new Date(row.created_at as string).toLocaleString("es-CL")
+                          : ""
+                        return (
+                          <div key={String(row.id)} className="flex gap-4 mb-6 relative">
+                            <div
+                              className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ${bg}`}
+                            >
+                              <Icon size={16} className="text-white" />
+                            </div>
+                            <div className="bg-white border border-[#D5C3B6]/30 rounded-lg p-4 flex-1 hover:shadow-md transition-shadow">
+                              <p className="text-[#2D3C3C] font-medium">{String(row.title ?? "")}</p>
+                              <p className="text-sm text-[#75524C]">{String(row.description ?? "")}</p>
+                              <p className="text-xs text-[#D5C3B6] mt-1">{when}</p>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
+
+                {detailTab === "steps" && selectedCaseId && (
+                  <div className="space-y-4">
+                    <div className="p-4 border border-[#D5C3B6]/30 rounded-lg space-y-3">
+                      <p className="text-sm font-medium text-[#2D3C3C]">Nuevo paso</p>
+                      <textarea
+                        value={newStepText}
+                        onChange={(e) => setNewStepText(e.target.value)}
+                        rows={2}
+                        placeholder="Describe el próximo paso…"
+                        className="w-full px-3 py-2 border border-[#D5C3B6] rounded-lg text-sm"
+                      />
+                      <div className="flex flex-wrap gap-3 items-end">
+                        <div>
+                          <label className="text-xs text-[#75524C] block mb-1">Asignado a</label>
+                          <select
+                            value={newStepAssign}
+                            onChange={(e) =>
+                              setNewStepAssign(e.target.value as "client" | "lawyer")
+                            }
+                            className="px-3 py-2 border border-[#D5C3B6] rounded-lg text-sm"
+                          >
+                            <option value="client">Cliente</option>
+                            <option value="lawyer">Abogado</option>
+                          </select>
                         </div>
-                        {/* Content */}
-                        <div className="bg-white border border-[#D5C3B6]/30 rounded-lg p-4 flex-1 hover:shadow-md transition-shadow">
-                          <p className="text-[#2D3C3C] font-medium">{item.event}</p>
-                          <p className="text-sm text-[#75524C]">{item.detail}</p>
-                          <p className="text-xs text-[#D5C3B6] mt-1">{item.date}</p>
+                        <div>
+                          <label className="text-xs text-[#75524C] block mb-1">Vencimiento (opcional)</label>
+                          <input
+                            type="date"
+                            value={newStepDue}
+                            onChange={(e) => setNewStepDue(e.target.value)}
+                            className="px-3 py-2 border border-[#D5C3B6] rounded-lg text-sm"
+                          />
                         </div>
+                        <button
+                          type="button"
+                          disabled={addingStep || !newStepText.trim()}
+                          onClick={async () => {
+                            setAddingStep(true)
+                            await addNextStepForCase({
+                              case_id: selectedCaseId,
+                              text: newStepText.trim(),
+                              assigned_to: newStepAssign,
+                              due_date: newStepDue || null,
+                            })
+                            setNewStepText("")
+                            setNewStepDue("")
+                            await refreshCaseDetail(selectedCaseId)
+                            setAddingStep(false)
+                          }}
+                          className="px-4 py-2 bg-[#75524C] text-white rounded-lg text-sm disabled:opacity-50"
+                        >
+                          {addingStep ? "Guardando…" : "Agregar"}
+                        </button>
                       </div>
-                    )
-                    })
-                    }
+                    </div>
+                    {detailLoading ? (
+                      <p className="text-sm text-[#75524C]">Cargando…</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {detailSteps.map((step) => {
+                          const id = String(step.id)
+                          const completed = Boolean(step.completed)
+                          const due = step.due_date
+                            ? new Date(step.due_date as string).toLocaleDateString("es-CL")
+                            : "—"
+                          const assigned = step.assigned_to as string
+                          return (
+                            <button
+                              type="button"
+                              key={id}
+                              onClick={async () => {
+                                await updateNextStepCompleted(id, !completed)
+                                await refreshCaseDetail(selectedCaseId)
+                              }}
+                              className={`w-full text-left flex items-start gap-3 p-3 border rounded-lg ${
+                                completed ? "opacity-50 border-[#D5C3B6]/30" : "border-[#D5C3B6]/30"
+                              }`}
+                            >
+                              <div
+                                className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                                  completed ? "bg-[#75524C]" : "border-2 border-[#D5C3B6]"
+                                }`}
+                              >
+                                {completed && <CheckCircle size={12} className="text-white" />}
+                              </div>
+                              <div>
+                                <p
+                                  className={`text-sm font-medium ${
+                                    completed ? "line-through text-[#75524C]" : "text-[#2D3C3C]"
+                                  }`}
+                                >
+                                  {String(step.text ?? "")}
+                                </p>
+                                <p className="text-xs text-[#75524C] mt-1">
+                                  {due} · {assigned === "client" ? "Cliente" : "Abogado"} · clic para alternar
+                                </p>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 

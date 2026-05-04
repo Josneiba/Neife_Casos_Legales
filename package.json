@@ -6,9 +6,19 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "postinstall": "dotenv -e env.prisma -- prisma generate",
+    "db:generate": "dotenv -e env.prisma -- prisma generate",
+    "db:validate": "dotenv -e env.prisma -- prisma validate",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/client": "5.22.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
     "class-variance-authority": "^0.7.0",
@@ -20,12 +30,15 @@
     "tailwind-merge": "^2.3.0"
   },
   "devDependencies": {
+    "prisma": "5.22.0",
     "@types/node": "^20.12.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "tsx": "^4.19.0",
+    "dotenv-cli": "^8.0.0"
   }
 }

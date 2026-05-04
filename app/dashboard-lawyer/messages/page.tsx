@@ -1,76 +1,137 @@
 "use client"
 
+import type { RealtimeChannel } from "@supabase/supabase-js"
 import { useState, useEffect, useRef } from "react"
-import { mockConversations } from "@/lib/data"
+import {
+  getConversations,
+  getMessages,
+  subscribeToMessages,
+} from "@/lib/queries/messages"
+import { sendMessage } from "@/lib/actions/messages"
+import { createClient } from "@/lib/supabase/client"
+import type { Message as DbMessage } from "@/lib/supabase/types"
 import { Search, Send, Paperclip, MoreVertical, Phone, Video } from "lucide-react"
 
 type Message = {
   id: string
-  sender: string
+  sender: "me" | "client"
   text: string
   time: string
   date?: string
 }
 
-const autoReplies = [
-  "Gracias por la información. Revisaré los detalles.",
-  "Entendido. ¿Podemos agendar una llamada para mañana?",
-  "Perfecto, adjunto los documentos solicitados.",
-  "¿Tiene alguna otra pregunta sobre el proceso?",
-]
+/** Lista y cabecera usan `lawyerName` en el JSX; para el rol abogado mostramos el nombre del cliente. */
+type Conversation = {
+  id: string
+  lawyerName: string
+  lastMessage: string
+  timestamp: string
+  online: boolean
+  unread: number
+}
+
+function mapLawyerConversation(row: Record<string, unknown>): Conversation {
+  const client = row.client as { full_name?: string | null } | null | undefined
+  return {
+    id: String(row.id),
+    lawyerName: client?.full_name ?? "—",
+    lastMessage: String(row.last_message ?? ""),
+    timestamp: row.last_message_at
+      ? new Date(row.last_message_at as string).toLocaleTimeString("es-CL", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "",
+    online: false,
+    unread: 0,
+  }
+}
+
+function mapDbMessage(m: DbMessage): Message {
+  const d = m.created_at ? new Date(m.created_at) : new Date()
+  return {
+    id: m.id,
+    sender: m.sender_role === "lawyer" ? "me" : "client",
+    text: m.text,
+    time: d.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
+    date: d.toLocaleDateString("es-CL"),
+  }
+}
 
 export default function LawyerMessagesPage() {
-  const [selectedConversation, setSelectedConversation] = useState(mockConversations[0])
+  const [loading, setLoading] = useState(true)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [selectedConversation, setSelectedConversation] =
+    useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
-  const [isTyping, setIsTyping] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const channelRef = useRef<RealtimeChannel | null>(null)
 
   useEffect(() => {
-    if (selectedConversation) {
-      setMessages(selectedConversation.messages.map((m, i) => ({
-        ...m,
-        date: i === 0 ? "Ayer" : i < 3 ? "Ayer" : "Hoy"
-      })))
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        setLoading(false)
+        return
+      }
+      setUserId(user.id)
+      getConversations(user.id, "lawyer").then((data) => {
+        const mapped = (data ?? []).map((row) =>
+          mapLawyerConversation(row as Record<string, unknown>)
+        )
+        setConversations(mapped)
+        if (mapped.length > 0) setSelectedConversation(mapped[0])
+        setLoading(false)
+      })
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!selectedConversation) return
+
+    channelRef.current?.unsubscribe()
+
+    getMessages(selectedConversation.id).then((rows) => {
+      setMessages((rows as DbMessage[]).map((m) => mapDbMessage(m)))
+    })
+
+    channelRef.current = subscribeToMessages(
+      selectedConversation.id,
+      (newMessageRow) => {
+        const mapped = mapDbMessage(newMessageRow as DbMessage)
+        setMessages((prev) =>
+          prev.some((p) => p.id === mapped.id) ? prev : [...prev, mapped]
+        )
+      }
+    )
+
+    return () => {
+      channelRef.current?.unsubscribe()
     }
-  }, [selectedConversation])
+  }, [selectedConversation?.id])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, isTyping])
+  }, [messages])
 
-  const filteredConversations = mockConversations.filter((conv) =>
+  const filteredConversations = conversations.filter((conv) =>
     conv.lawyerName.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const handleSendMessage = () => {
-    if (newMessage.trim()) {
-      const newMsg: Message = {
-        id: String(messages.length + 1),
-        sender: "me",
-        text: newMessage,
-        time: new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
-        date: "Hoy",
-      }
-      setMessages([...messages, newMsg])
-      setNewMessage("")
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !selectedConversation || !userId) return
 
-      // Simulate client typing and auto-reply
-      setIsTyping(true)
-      const replyDelay = 2000 + Math.random() * 1000
-      setTimeout(() => {
-        setIsTyping(false)
-        const autoReply: Message = {
-          id: String(messages.length + 2),
-          sender: "client",
-          text: autoReplies[Math.floor(Math.random() * autoReplies.length)],
-          time: new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
-          date: "Hoy",
-        }
-        setMessages(prev => [...prev, autoReply])
-      }, replyDelay)
-    }
+    const text = newMessage
+    setNewMessage("")
+
+    await sendMessage({
+      conversation_id: selectedConversation.id,
+      text,
+      sender_role: "lawyer",
+    })
   }
 
   // Group messages by date
@@ -79,6 +140,15 @@ export default function LawyerMessagesPage() {
       return currentDate
     }
     return null
+  }
+
+  if (loading) {
+    return (
+      <div className="h-[calc(100vh-2rem)] flex bg-white rounded-xl overflow-hidden border border-[#D5C3B6]/30 animate-pulse">
+        <div className="w-80 border-r border-[#D5C3B6]/30 bg-[#F8F7F4]/80" />
+        <div className="flex-1 bg-[#F8F7F4]/50" />
+      </div>
+    )
   }
 
   return (
@@ -100,6 +170,11 @@ export default function LawyerMessagesPage() {
         </div>
         
         <div className="flex-1 overflow-y-auto">
+          {filteredConversations.length === 0 ? (
+            <div className="p-6 text-center text-sm text-[#75524C]">
+              Sin conversaciones
+            </div>
+          ) : null}
           {filteredConversations.map((conversation) => (
             <button
               key={conversation.id}
@@ -206,24 +281,7 @@ export default function LawyerMessagesPage() {
                   </div>
                 </div>
               )
-            })}
-            
-            {/* Typing indicator */}
-            {isTyping && (
-              <div className="flex gap-2 items-center">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white font-bold text-xs">
-                  {selectedConversation.lawyerName
-                    .split(" ")
-                    .map((n: string) => n[0])
-                    .join("")}
-                </div>
-                <div className="bg-[#F8F7F4] rounded-2xl px-4 py-2 flex gap-1">
-                  <span className="w-2 h-2 bg-[#75524C] rounded-full animate-bounce" style={{animationDelay:"0ms"}} />
-                  <span className="w-2 h-2 bg-[#75524C] rounded-full animate-bounce" style={{animationDelay:"150ms"}} />
-                  <span className="w-2 h-2 bg-[#75524C] rounded-full animate-bounce" style={{animationDelay:"300ms"}} />
-                </div>
-              </div>
-            )}
+            }            )}
             <div ref={messagesEndRef} />
           </div>
 

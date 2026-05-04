@@ -1,10 +1,18 @@
 "use client"
 
+import type { RealtimeChannel } from "@supabase/supabase-js"
 import { useState, useEffect, useRef } from "react"
 import { Search, Paperclip, Smile, Send, Circle } from "lucide-react"
-import { mockConversations } from "@/lib/data"
+import {
+  getConversations,
+  getMessages,
+  subscribeToMessages,
+} from "@/lib/queries/messages"
+import { sendMessage } from "@/lib/actions/messages"
+import { createClient } from "@/lib/supabase/client"
+import type { Message as DbMessage } from "@/lib/supabase/types"
 
-type Message = {
+type ChatMessage = {
   id: string
   sender: "client" | "lawyer"
   text: string
@@ -12,91 +20,134 @@ type Message = {
   date?: string
 }
 
-type Conversation = typeof mockConversations[0]
+type Conversation = {
+  id: string
+  lawyerName: string
+  lawyerSpecialty: string
+  lastMessage: string
+  timestamp: string
+  online: boolean
+  unread: number
+}
 
-const autoReplies = [
-  "Gracias por su mensaje. Revisaré los documentos y le responderé pronto.",
-  "Entendido. Programaré una reunión para discutir los detalles.",
-  "Perfecto, procederé con la gestión. ¿Tiene alguna otra consulta?",
-  "He recibido su información. Le mantendré informado del progreso.",
-]
+function mapConversation(row: Record<string, unknown>): Conversation {
+  const lawyer = row.lawyer as
+    | {
+        full_name?: string | null
+        lawyer_profiles?: { specialties?: string[] | null } | null
+      }
+    | null
+    | undefined
+  const specs = lawyer?.lawyer_profiles?.specialties
+  return {
+    id: String(row.id),
+    lawyerName: lawyer?.full_name ?? "—",
+    lawyerSpecialty: specs?.[0] ?? "",
+    lastMessage: String(row.last_message ?? ""),
+    timestamp: row.last_message_at
+      ? new Date(row.last_message_at as string).toLocaleTimeString("es-CL", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "",
+    online: false,
+    unread: 0,
+  }
+}
+
+function mapDbMessage(m: DbMessage): ChatMessage {
+  const role = m.sender_role === "client" ? "client" : "lawyer"
+  const d = m.created_at ? new Date(m.created_at) : new Date()
+  return {
+    id: m.id,
+    sender: role,
+    text: m.text,
+    time: d.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
+    date: d.toLocaleDateString("es-CL"),
+  }
+}
 
 export default function MessagesPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [selectedConversation, setSelectedConversation] =
+    useState<Conversation | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [newMessage, setNewMessage] = useState("")
-  const [isTyping, setIsTyping] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const channelRef = useRef<RealtimeChannel | null>(null)
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(false)
-      if (mockConversations.length > 0) {
-        setSelectedConversation(mockConversations[0])
-        setMessages(
-          mockConversations[0].messages.map((m, i) => ({
-            ...m,
-            sender: m.sender as Message["sender"],
-            date: i === 0 ? "Ayer" : i < 3 ? "Ayer" : "Hoy",
-          }))
-        )
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        setLoading(false)
+        return
       }
-    }, 800)
-    return () => clearTimeout(timer)
+      setUserId(user.id)
+      getConversations(user.id, "client").then((data) => {
+        const mapped = (data ?? []).map((row) =>
+          mapConversation(row as Record<string, unknown>)
+        )
+        setConversations(mapped)
+        if (mapped.length > 0) setSelectedConversation(mapped[0])
+        setLoading(false)
+      })
+    })
   }, [])
 
   useEffect(() => {
+    if (!selectedConversation) return
+
+    channelRef.current?.unsubscribe()
+
+    getMessages(selectedConversation.id).then((rows) => {
+      setMessages(rows.map((m) => mapDbMessage(m)))
+    })
+
+    channelRef.current = subscribeToMessages(
+      selectedConversation.id,
+      (newMessageRow) => {
+        const mapped = mapDbMessage(newMessageRow as DbMessage)
+        setMessages((prev) =>
+          prev.some((p) => p.id === mapped.id) ? prev : [...prev, mapped]
+        )
+      }
+    )
+
+    return () => {
+      channelRef.current?.unsubscribe()
+    }
+  }, [selectedConversation?.id])
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, isTyping])
+  }, [messages])
 
   const handleSelectConversation = (conv: Conversation) => {
     setSelectedConversation(conv)
-    setMessages(
-      conv.messages.map((m, i) => ({
-        ...m,
-        sender: m.sender as Message["sender"],
-        date: i === 0 ? "Ayer" : i < 3 ? "Ayer" : "Hoy",
-      }))
-    )
-    setIsTyping(false)
   }
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newMessage.trim()) return
+    if (!newMessage.trim() || !selectedConversation || !userId) return
 
-    const newMsg: Message = {
-      id: String(messages.length + 1),
-      sender: "client",
-      text: newMessage,
-      time: new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
-      date: "Hoy",
-    }
-
-    setMessages([...messages, newMsg])
+    const text = newMessage
     setNewMessage("")
 
-    // Simulate lawyer typing and auto-reply
-    setIsTyping(true)
-    const replyDelay = 2000 + Math.random() * 1000
-    setTimeout(() => {
-      setIsTyping(false)
-      const autoReply: Message = {
-        id: String(messages.length + 2),
-        sender: "lawyer",
-        text: autoReplies[Math.floor(Math.random() * autoReplies.length)],
-        time: new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
-        date: "Hoy",
-      }
-      setMessages(prev => [...prev, autoReply])
-    }, replyDelay)
+    await sendMessage({
+      conversation_id: selectedConversation.id,
+      text,
+      sender_role: "client",
+    })
   }
 
-  const filteredConversations = mockConversations.filter((conv) =>
-    conv.lawyerName.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredConversations = conversations.filter((conv) => {
+    if (!searchQuery) return true
+    return conv.lawyerName.toLowerCase().includes(searchQuery.toLowerCase())
+  })
 
   // Group messages by date
   const getDateSeparator = (currentDate: string | undefined, prevDate: string | undefined) => {
@@ -264,19 +315,6 @@ export default function MessagesPage() {
                 )
               })}
               
-              {/* Typing indicator */}
-              {isTyping && (
-                <div className="flex gap-2 items-center">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white font-bold text-xs">
-                    {selectedConversation.lawyerName.split(" ").map(n => n[0]).join("").slice(0, 2)}
-                  </div>
-                  <div className="bg-[#D5C3B6]/30 rounded-2xl px-4 py-2 flex gap-1">
-                    <span className="w-2 h-2 bg-[#75524C] rounded-full animate-bounce" style={{animationDelay:"0ms"}} />
-                    <span className="w-2 h-2 bg-[#75524C] rounded-full animate-bounce" style={{animationDelay:"150ms"}} />
-                    <span className="w-2 h-2 bg-[#75524C] rounded-full animate-bounce" style={{animationDelay:"300ms"}} />
-                  </div>
-                </div>
-              )}
               <div ref={messagesEndRef} />
             </div>
 

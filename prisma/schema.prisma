@@ -1,0 +1,252 @@
+// Refleja `supabase/01_schema.sql` (public). Las migraciones reales siguen en SQL / Supabase.
+// Usa Prisma para tipos, seeds y herramientas (Studio, introspection).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Profile {
+  id         String   @id @db.Uuid
+  role       String
+  fullName   String   @map("full_name")
+  email      String
+  phone      String?
+  city       String?
+  bio        String?
+  avatarUrl  String?  @map("avatar_url")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  lawyerProfile LawyerProfile?
+
+  casesAsClient  LegalCase[] @relation("CaseClient")
+  casesAsLawyer  LegalCase[] @relation("CaseLawyer")
+
+  @@map("profiles")
+}
+
+model LawyerProfile {
+  id                 String   @id @db.Uuid
+  title              String?
+  licenseNumber      String?  @map("license_number")
+  experienceYears    Int      @default(0) @map("experience_years")
+  successRate        Int      @default(0) @map("success_rate")
+  verified           Boolean  @default(false)
+  hourlyRate         Decimal? @map("hourly_rate") @db.Decimal(10, 2)
+  fixedRate          Decimal? @map("fixed_rate") @db.Decimal(10, 2)
+  monthlyRetainer    Decimal? @map("monthly_retainer") @db.Decimal(10, 2)
+  contingencyRate    Int?     @map("contingency_rate")
+  freeConsult        Boolean  @default(false) @map("free_consult")
+  paymentPlan        Boolean  @default(false) @map("payment_plan")
+  contingency        Boolean  @default(false)
+  minClientBudget    Decimal? @map("min_client_budget") @db.Decimal(10, 2)
+  rating             Decimal  @default(0) @db.Decimal(3, 2)
+  reviewCount        Int      @default(0) @map("review_count")
+  available          Boolean  @default(true)
+  specialties        String[] @default([])
+  availabilityGrid   Json     @default("{}") @map("availability_grid")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [id], references: [id], onDelete: Cascade)
+
+  experiences LawyerExperience[]
+
+  @@map("lawyer_profiles")
+}
+
+model LawyerExperience {
+  id          String   @id @default(uuid()) @db.Uuid
+  lawyerId    String   @map("lawyer_id") @db.Uuid
+  company     String
+  roleTitle   String   @map("role")
+  period      String?
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  lawyer LawyerProfile @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+
+  @@map("lawyer_experience")
+}
+
+model LegalCase {
+  id          String   @id @default(uuid()) @db.Uuid
+  title       String
+  type        String
+  description String?
+  status      String   @default("waiting")
+  priority    String   @default("medium")
+  progress    Int      @default(0)
+  budget      Decimal? @db.Decimal(10, 2)
+  nextAction  String?  @map("next_action")
+  clientId    String   @map("client_id") @db.Uuid
+  lawyerId    String?  @map("lawyer_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  client Profile  @relation("CaseClient", fields: [clientId], references: [id], onDelete: Cascade)
+  lawyer Profile? @relation("CaseLawyer", fields: [lawyerId], references: [id])
+
+  caseRequests   CaseRequest[]
+  caseActivities CaseActivity[]
+  caseNotes      CaseNote[]
+  nextSteps      NextStep[]
+  documents      Document[]
+
+  @@map("cases")
+}
+
+model CaseRequest {
+  id          String    @id @default(uuid()) @db.Uuid
+  caseId      String?   @map("case_id") @db.Uuid
+  clientId    String?   @map("client_id") @db.Uuid
+  lawyerId    String?   @map("lawyer_id") @db.Uuid
+  message     String?
+  status      String    @default("pending")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  respondedAt DateTime? @map("responded_at") @db.Timestamptz(6)
+
+  case LegalCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@map("case_requests")
+}
+
+model CaseActivity {
+  id          String   @id @default(uuid()) @db.Uuid
+  caseId      String   @map("case_id") @db.Uuid
+  type        String
+  title       String
+  description String?
+  createdBy   String?  @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  legalCase LegalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@map("case_activities")
+}
+
+model CaseNote {
+  id        String   @id @default(uuid()) @db.Uuid
+  caseId    String   @map("case_id") @db.Uuid
+  lawyerId  String   @map("lawyer_id") @db.Uuid
+  content   String?
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  legalCase LegalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@map("case_notes")
+}
+
+model NextStep {
+  id         String    @id @default(uuid()) @db.Uuid
+  caseId     String    @map("case_id") @db.Uuid
+  stepText   String    @map("text")
+  completed  Boolean   @default(false)
+  dueDate    DateTime? @map("due_date") @db.Date
+  assignedTo String?   @map("assigned_to")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  legalCase LegalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@map("next_steps")
+}
+
+model Document {
+  id               String   @id @default(uuid()) @db.Uuid
+  caseId           String   @map("case_id") @db.Uuid
+  name             String
+  fileType         String?  @map("file_type")
+  fileUrl          String   @map("file_url")
+  fileSize         String?  @map("file_size")
+  uploadedBy       String?  @map("uploaded_by") @db.Uuid
+  uploadedByRole   String?  @map("uploaded_by_role")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  legalCase LegalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@map("documents")
+}
+
+model Conversation {
+  id            String    @id @default(uuid()) @db.Uuid
+  clientId      String?   @map("client_id") @db.Uuid
+  lawyerId      String?   @map("lawyer_id") @db.Uuid
+  caseId        String?   @map("case_id") @db.Uuid
+  lastMessage   String?   @map("last_message")
+  lastMessageAt DateTime  @default(now()) @map("last_message_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  messages Message[]
+
+  @@unique([clientId, lawyerId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  senderId       String?  @map("sender_id") @db.Uuid
+  senderRole     String?  @map("sender_role")
+  text           String
+  read           Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model Review {
+  id        String   @id @default(uuid()) @db.Uuid
+  lawyerId  String?  @map("lawyer_id") @db.Uuid
+  clientId  String?  @map("client_id") @db.Uuid
+  caseId    String?  @map("case_id") @db.Uuid
+  rating    Int?
+  text      String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("reviews")
+}
+
+model ClientCasePost {
+  id             String   @id @default(uuid()) @db.Uuid
+  clientId       String?  @map("client_id") @db.Uuid
+  title          String
+  type           String
+  urgency        String   @default("normal")
+  budgetMin      Decimal? @map("budget_min") @db.Decimal(10, 2)
+  budgetMax      Decimal? @map("budget_max") @db.Decimal(10, 2)
+  city           String?
+  clientType     String   @default("Particular") @map("client_type")
+  description    String?
+  caseType       String?  @map("case_type")
+  responseNeeded String?  @map("response_needed")
+  status         String   @default("open")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  proposals LawyerProposal[]
+
+  @@map("client_case_posts")
+}
+
+model LawyerProposal {
+  id             String   @id @default(uuid()) @db.Uuid
+  postId         String   @map("post_id") @db.Uuid
+  lawyerId       String?  @map("lawyer_id") @db.Uuid
+  clientId       String?  @map("client_id") @db.Uuid
+  message        String?
+  proposedRate   Decimal? @map("proposed_rate") @db.Decimal(10, 2)
+  estimatedTime  String?  @map("estimated_time")
+  status         String   @default("pending")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  post ClientCasePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("lawyer_proposals")
+}

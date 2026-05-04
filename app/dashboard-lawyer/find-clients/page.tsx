@@ -16,9 +16,45 @@ import {
   AlertCircle,
   CheckCircle,
 } from "lucide-react"
-import { mockClientCases, specialties, cities } from "@/lib/data"
+import { specialties, cities } from "@/lib/data"
+import { getClientCasePosts } from "@/lib/queries/cases"
+import { submitProposal } from "@/lib/actions/lawyer"
 
-type ClientCase = typeof mockClientCases[0]
+type ClientCase = {
+  id: string
+  client_id: string
+  title: string
+  type: string
+  urgency: string
+  budgetMin: number
+  budgetMax: number
+  city: string
+  clientType: string
+  description: string
+  publishedAt: string
+  responseNeeded: string
+  caseType: string
+}
+
+function mapClientPost(row: Record<string, unknown>): ClientCase {
+  return {
+    id: String(row.id),
+    client_id: String(row.client_id ?? ""),
+    title: String(row.title ?? ""),
+    type: String(row.type ?? ""),
+    urgency: String(row.urgency ?? "normal"),
+    budgetMin: Number(row.budget_min ?? 0),
+    budgetMax: Number(row.budget_max ?? 0),
+    city: String(row.city ?? ""),
+    clientType: String(row.client_type ?? "Particular"),
+    description: String(row.description ?? ""),
+    publishedAt: row.created_at
+      ? new Date(row.created_at as string).toLocaleDateString("es-CL")
+      : "",
+    responseNeeded: String(row.response_needed ?? ""),
+    caseType: String(row.case_type ?? ""),
+  }
+}
 
 export default function FindClientsPage() {
   const [loading, setLoading] = useState(true)
@@ -34,19 +70,26 @@ export default function FindClientsPage() {
   const [applyModalOpen, setApplyModalOpen] = useState(false)
   const [proposedRate, setProposedRate] = useState("120")
   const [proposalMessage, setProposalMessage] = useState("")
+  const [estimatedTime, setEstimatedTime] = useState("1-2-weeks")
   const [applying, setApplying] = useState(false)
   const [proposalSent, setProposalSent] = useState(false)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
   // Track cases already applied to
   const [appliedCases, setAppliedCases] = useState<Set<string>>(new Set())
+  const [clientCases, setClientCases] = useState<ClientCase[]>([])
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800)
-    return () => clearTimeout(timer)
+    getClientCasePosts()
+      .then((rows) => {
+        setClientCases(
+          (rows ?? []).map((r) => mapClientPost(r as Record<string, unknown>))
+        )
+      })
+      .finally(() => setLoading(false))
   }, [])
 
-  const filteredCases = mockClientCases.filter((c) => {
+  const filteredCases = clientCases.filter((c) => {
     if (searchQuery && !c.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
         !c.type.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false
@@ -80,12 +123,19 @@ export default function FindClientsPage() {
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!selectedCase?.client_id) return
     setApplying(true)
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    const result = await submitProposal({
+      post_id: selectedCase.id,
+      client_id: selectedCase.client_id,
+      message: proposalMessage,
+      proposed_rate: Number(proposedRate),
+      estimated_time: estimatedTime,
+    })
     setApplying(false)
-    setProposalSent(true)
-    if (selectedCase) {
-      setAppliedCases(prev => new Set([...prev, selectedCase.id]))
+    if ("success" in result && result.success) {
+      setProposalSent(true)
+      setAppliedCases((prev) => new Set([...prev, selectedCase.id]))
     }
   }
 
@@ -592,9 +642,11 @@ export default function FindClientsPage() {
                       </label>
                       <textarea
                         rows={4}
+                        value={proposalMessage}
+                        onChange={(e) => setProposalMessage(e.target.value)}
                         className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#75524C]"
                         placeholder="Presentate y explica por que eres ideal para este caso..."
-                      ></textarea>
+                      />
                     </div>
 
                     <div>
@@ -613,8 +665,11 @@ export default function FindClientsPage() {
                       <label className="block text-sm font-medium text-[#2D3C3C] mb-1">
                         Tiempo estimado de resolucion
                       </label>
-                      <select className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#75524C]">
-                        <option value="">Selecciona</option>
+                      <select
+                        value={estimatedTime}
+                        onChange={(e) => setEstimatedTime(e.target.value)}
+                        className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#75524C]"
+                      >
                         <option value="1-2-weeks">1-2 semanas</option>
                         <option value="1-month">1 mes</option>
                         <option value="2-3-months">2-3 meses</option>

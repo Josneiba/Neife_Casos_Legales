@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import {
   Camera,
   Save,
@@ -16,6 +16,10 @@ import {
   MapPin,
 } from "lucide-react"
 import { specialties, cities } from "@/lib/data"
+import { getLawyerOwnProfile, getLawyerExperienceRows } from "@/lib/queries/lawyer-self"
+import { getLawyerReviews } from "@/lib/queries/lawyers"
+import { updateLawyerProfile } from "@/lib/actions/lawyer"
+import { uploadProfileAvatar } from "@/lib/actions/profile"
 
 const daysOfWeek = ["L", "M", "M", "J", "V", "S", "D"]
 const timeSlots = [
@@ -24,51 +28,58 @@ const timeSlots = [
   { label: "Noche", time: "19-21h" },
 ]
 
-const mockExperience = [
-  {
-    id: "1",
-    company: "Estudio Jurídico González & Asociados",
-    position: "Socia Fundadora",
-    period: "2018 - Presente",
-    description: "Dirección del área de derecho de familia y mediación.",
-  },
-  {
-    id: "2",
-    company: "Corporación de Asistencia Judicial",
-    position: "Abogada Asistente",
-    period: "2012 - 2018",
-    description: "Atención de casos de familia para personas de escasos recursos.",
-  },
-]
+const defaultAvailability: Record<string, boolean> = {
+  "0-0": true, "0-1": true, "0-2": false,
+  "1-0": true, "1-1": true, "1-2": false,
+  "2-0": true, "2-1": false, "2-2": false,
+  "3-0": true, "3-1": true, "3-2": false,
+  "4-0": true, "4-1": true, "4-2": false,
+  "5-0": false, "5-1": false, "5-2": false,
+  "6-0": false, "6-1": false, "6-2": false,
+}
 
-const mockReviews = [
-  {
-    id: "1",
-    initials: "CM",
-    name: "C.M.",
-    rating: 5,
-    text: "Excelente profesional, muy comprometida con mi caso. Logró un acuerdo favorable en tiempo récord.",
-    date: "Hace 2 semanas",
-  },
-  {
-    id: "2",
-    initials: "JR",
-    name: "J.R.",
-    rating: 5,
-    text: "La Dra. González me explicó todo el proceso con paciencia. Muy recomendada.",
-    date: "Hace 1 mes",
-  },
-  {
-    id: "3",
-    initials: "LP",
-    name: "L.P.",
-    rating: 4,
-    text: "Buen servicio, aunque a veces tardaba en responder. Resultado final satisfactorio.",
-    date: "Hace 2 meses",
-  },
-]
+type ReviewCard = {
+  id: string
+  initials: string
+  name: string
+  rating: number
+  text: string
+  date: string
+}
+
+function mapReviewRows(rows: Record<string, unknown>[]): ReviewCard[] {
+  return rows.map((r, i) => {
+    const client = r.client as { full_name?: string | null } | null | undefined
+    const fn = (client?.full_name ?? "Cliente").trim()
+    const parts = fn.split(/\s+/).filter(Boolean)
+    const initials =
+      parts.length >= 2
+        ? `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase()
+        : (fn.slice(0, 2) || "C").toUpperCase()
+    const nameDisplay =
+      parts.length > 0
+        ? parts.map((p) => `${(p[0] ?? "").toUpperCase()}.`).join("")
+        : "Cliente"
+    const created = r.created_at as string | undefined
+    return {
+      id: String(r.id ?? i),
+      initials,
+      name: nameDisplay,
+      rating: Number(r.rating) || 0,
+      text: String(r.text ?? ""),
+      date: created
+        ? new Date(created).toLocaleDateString("es-CL", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })
+        : "",
+    }
+  })
+}
 
 export default function LawyerProfilePage() {
+  const [pageLoad, setPageLoad] = useState(true)
   const [editMode, setEditMode] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -76,46 +87,45 @@ export default function LawyerProfilePage() {
 
   // Personal info
   const [profile, setProfile] = useState({
-    name: "Dra. María González",
-    title: "Abogada Especialista en Derecho de Familia",
-    bio: "Especialista en derecho de familia con más de 12 años de experiencia en divorcios, tuición y pensiones alimenticias. Egresada de la Universidad de Chile. Mi enfoque es siempre buscar soluciones que protejan el bienestar de todas las partes, especialmente de los menores involucrados.",
-    city: "Santiago",
-    phone: "+56 9 1234 5678",
-    email: "maria.gonzalez@neife.cl",
-    licenseNumber: "CL-12345-2012",
+    name: "",
+    title: "",
+    bio: "",
+    city: "",
+    phone: "",
+    email: "",
+    licenseNumber: "",
   })
 
   // Specialties
-  const [selectedSpecs, setSelectedSpecs] = useState<string[]>([
-    "Derecho de Familia",
-    "Derecho Civil",
-  ])
+  const [selectedSpecs, setSelectedSpecs] = useState<string[]>([])
 
   // Rates
   const [rates, setRates] = useState({
-    hourlyRate: 120,
-    freeConsult: true,
-    paymentPlan: true,
+    hourlyRate: 0,
+    freeConsult: false,
+    paymentPlan: false,
     contingency: false,
     contingencyPercent: 30,
     fixedRate: "",
     monthlyRetainer: "",
-    minBudget: 50,
+    minBudget: 0,
   })
 
   // Availability
-  const [availability, setAvailability] = useState<Record<string, boolean>>({
-    "0-0": true, "0-1": true, "0-2": false,
-    "1-0": true, "1-1": true, "1-2": false,
-    "2-0": true, "2-1": false, "2-2": false,
-    "3-0": true, "3-1": true, "3-2": false,
-    "4-0": true, "4-1": true, "4-2": false,
-    "5-0": false, "5-1": false, "5-2": false,
-    "6-0": false, "6-1": false, "6-2": false,
-  })
+  const [availability, setAvailability] = useState<Record<string, boolean>>(() => ({
+    ...defaultAvailability,
+  }))
+
+  const [reviews, setReviews] = useState<ReviewCard[]>([])
+  const [ratingAvg, setRatingAvg] = useState(0)
+  const [ratingCount, setRatingCount] = useState(0)
+  const [expYears, setExpYears] = useState(0)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
 
   // Experience
-  const [experience, setExperience] = useState(mockExperience)
+  const [experience, setExperience] = useState<
+    { id: string; company: string; position: string; period: string; description: string }[]
+  >([])
   const [showAddExperience, setShowAddExperience] = useState(false)
   const [newExperience, setNewExperience] = useState({
     company: "",
@@ -123,6 +133,94 @@ export default function LawyerProfilePage() {
     period: "",
     description: "",
   })
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const row = await getLawyerOwnProfile()
+      if (cancelled || !row) {
+        setPageLoad(false)
+        return
+      }
+      const uid = String(row.id)
+      const lp = row.lawyer_profiles as Record<string, unknown> | null | undefined
+      const specs = (lp?.specialties as string[]) ?? []
+
+      setProfile({
+        name: String(row.full_name ?? ""),
+        title: String(lp?.title ?? ""),
+        bio: String(row.bio ?? ""),
+        city: String(row.city ?? ""),
+        phone: String(row.phone ?? ""),
+        email: String(row.email ?? ""),
+        licenseNumber: String(lp?.license_number ?? ""),
+      })
+      setAvatarUrl(row.avatar_url ? String(row.avatar_url) : null)
+      setSelectedSpecs(specs.length ? specs : [])
+      setRates({
+        hourlyRate: Number(lp?.hourly_rate) || 0,
+        freeConsult: Boolean(lp?.free_consult),
+        paymentPlan: Boolean(lp?.payment_plan),
+        contingency: Boolean(lp?.contingency),
+        contingencyPercent: Number(lp?.contingency_rate) || 30,
+        fixedRate:
+          lp?.fixed_rate != null && lp.fixed_rate !== ""
+            ? String(lp.fixed_rate)
+            : "",
+        monthlyRetainer:
+          lp?.monthly_retainer != null && lp.monthly_retainer !== ""
+            ? String(lp.monthly_retainer)
+            : "",
+        minBudget: Number(lp?.min_client_budget) || 0,
+      })
+      setExpYears(Number(lp?.experience_years) || 0)
+      setRatingAvg(Number(lp?.rating) || 0)
+      setRatingCount(Number(lp?.review_count) || 0)
+
+      const rawGrid = lp?.availability_grid as Record<string, unknown> | undefined
+      if (rawGrid && typeof rawGrid === "object") {
+        setAvailability((prev) => {
+          const next = { ...prev }
+          for (const k of Object.keys(rawGrid)) {
+            if (k in next && typeof rawGrid[k] === "boolean") {
+              next[k] = rawGrid[k] as boolean
+            }
+          }
+          return next
+        })
+      }
+
+      const [revRows, exRows] = await Promise.all([
+        getLawyerReviews(uid),
+        getLawyerExperienceRows(uid),
+      ])
+      if (!cancelled) {
+        setReviews(mapReviewRows((revRows ?? []) as Record<string, unknown>[]))
+        setExperience(
+          (exRows as { id: string; company: string; role: string; period: string | null; description: string | null }[]).map(
+            (e) => ({
+              id: e.id,
+              company: e.company,
+              position: e.role,
+              period: e.period ?? "",
+              description: e.description ?? "",
+            })
+          )
+        )
+      }
+      setPageLoad(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const initials = useMemo(() => {
+    const parts = profile.name.split(/\s+/).filter(Boolean)
+    if (parts.length >= 2)
+      return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase()
+    return (profile.name.slice(0, 2) || "?").toUpperCase()
+  }, [profile.name])
 
   const toggleSpec = (spec: string) => {
     if (!editMode) return
@@ -136,13 +234,39 @@ export default function LawyerProfilePage() {
     setAvailability((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true)
-    setTimeout(() => {
-      setSaving(false)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
-    }, 1000)
+    const parseMoney = (s: string) => {
+      const n = Number(String(s).replace(/[^\d.-]/g, ""))
+      return Number.isFinite(n) ? n : undefined
+    }
+    const fixedNum = rates.fixedRate.trim() ? parseMoney(rates.fixedRate) : undefined
+    const monthlyNum = rates.monthlyRetainer.trim()
+      ? parseMoney(rates.monthlyRetainer)
+      : undefined
+
+    await updateLawyerProfile({
+      full_name: profile.name,
+      title: profile.title,
+      bio: profile.bio,
+      city: profile.city,
+      phone: profile.phone,
+      license_number: profile.licenseNumber,
+      specialties: selectedSpecs,
+      hourly_rate: rates.hourlyRate,
+      free_consult: rates.freeConsult,
+      payment_plan: rates.paymentPlan,
+      contingency: rates.contingency,
+      contingency_rate: rates.contingencyPercent,
+      min_client_budget: rates.minBudget,
+      fixed_rate: fixedNum,
+      monthly_retainer: monthlyNum,
+      availability_grid: availability,
+    })
+
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 3000)
   }
 
   const addExperience = () => {
@@ -160,8 +284,15 @@ export default function LawyerProfilePage() {
     setExperience((prev) => prev.filter((e) => e.id !== id))
   }
 
-  const averageRating = 4.9
-  const totalReviews = 47
+  if (pageLoad) {
+    return (
+      <div className="max-w-4xl mx-auto pb-24 animate-pulse space-y-6">
+        <div className="h-10 bg-[#D5C3B6]/30 rounded w-48" />
+        <div className="h-64 bg-[#D5C3B6]/20 rounded-lg" />
+        <div className="h-40 bg-[#D5C3B6]/20 rounded-lg" />
+      </div>
+    )
+  }
 
   // Public Profile View
   if (!editMode) {
@@ -188,8 +319,12 @@ export default function LawyerProfilePage() {
           {/* Header de tarjeta */}
           <div className="bg-gradient-to-r from-[#2D3C3C] to-[#5E8B8C]/80 p-6">
             <div className="flex items-start gap-4">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white font-bold text-2xl border-4 border-white/20 shrink-0">
-                MG
+              <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white font-bold text-2xl border-4 border-white/20 shrink-0 overflow-hidden">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  initials
+                )}
               </div>
               <div className="text-white">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -202,7 +337,7 @@ export default function LawyerProfilePage() {
                 <div className="flex items-center gap-3 text-sm text-white/70 flex-wrap">
                   <span className="flex items-center gap-1"><MapPin size={12} />{profile.city || "Santiago"}</span>
                   <span>•</span>
-                  <span>12 anos exp.</span>
+                  <span>{expYears} años exp.</span>
                 </div>
               </div>
             </div>
@@ -214,7 +349,7 @@ export default function LawyerProfilePage() {
             <div className="bg-[#F8F7F4] border border-[#D5C3B6] rounded-lg p-4">
               <h3 className="font-bold text-[#2D3C3C] mb-3">Tarifas</h3>
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-3xl font-bold text-[#2D3C3C]">${rates.hourlyRate || "120"}</span>
+                <span className="text-3xl font-bold text-[#2D3C3C]">${rates.hourlyRate || "—"}</span>
                 <span className="text-[#75524C]">/hora</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -230,13 +365,22 @@ export default function LawyerProfilePage() {
               </div>
             </div>
 
-            {/* Rating mock */}
             <div className="flex items-center gap-3">
               <div className="flex gap-1">
-                {[1,2,3,4,5].map(i => <Star key={i} size={18} className="fill-[#F2C94C] text-[#F2C94C]" />)}
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Star
+                    key={i}
+                    size={18}
+                    className={
+                      i <= Math.round(ratingAvg)
+                        ? "fill-[#F2C94C] text-[#F2C94C]"
+                        : "text-[#D5C3B6]"
+                    }
+                  />
+                ))}
               </div>
-              <span className="font-bold text-[#2D3C3C]">4.9</span>
-              <span className="text-sm text-[#75524C]">(47 resenas)</span>
+              <span className="font-bold text-[#2D3C3C]">{ratingAvg.toFixed(1)}</span>
+              <span className="text-sm text-[#75524C]">({ratingCount} reseñas)</span>
             </div>
 
             {/* Especialidades */}
@@ -311,10 +455,18 @@ export default function LawyerProfilePage() {
           {/* Avatar */}
           <div className="flex-shrink-0">
             <div
-              className="relative w-24 h-24 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white font-bold text-2xl cursor-pointer group"
+              className="relative w-24 h-24 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white font-bold text-2xl cursor-pointer group overflow-hidden"
               onClick={() => editMode && fileInputRef.current?.click()}
             >
-              MG
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+              ) : (
+                initials
+              )}
               {editMode && (
                 <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                   <Camera size={24} className="text-white" />
@@ -324,8 +476,17 @@ export default function LawyerProfilePage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/gif"
               className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                const fd = new FormData()
+                fd.append("file", file)
+                const res = await uploadProfileAvatar(fd)
+                e.target.value = ""
+                if ("avatarUrl" in res && res.avatarUrl) setAvatarUrl(res.avatarUrl)
+              }}
             />
           </div>
 
@@ -422,9 +583,9 @@ export default function LawyerProfilePage() {
               <input
                 type="email"
                 value={profile.email}
-                onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                disabled={!editMode}
-                className="w-full px-4 py-2 border border-[#D5C3B6]/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C] focus:border-transparent disabled:bg-[#F8F7F4] disabled:cursor-not-allowed"
+                readOnly
+                title="El correo se gestiona desde tu cuenta de acceso"
+                className="w-full px-4 py-2 border border-[#D5C3B6]/50 rounded-lg bg-[#F8F7F4] cursor-not-allowed text-[#75524C]"
               />
             </div>
           </div>
@@ -747,24 +908,27 @@ export default function LawyerProfilePage() {
 
         {/* Average rating */}
         <div className="flex items-center gap-4 mb-6">
-          <div className="text-4xl font-bold text-[#2D3C3C]">{averageRating}</div>
+          <div className="text-4xl font-bold text-[#2D3C3C]">{ratingAvg.toFixed(1)}</div>
           <div>
             <div className="flex items-center gap-1">
               {[1, 2, 3, 4, 5].map((star) => (
                 <Star
                   key={star}
                   size={20}
-                  className={star <= Math.floor(averageRating) ? "text-[#F2C94C] fill-[#F2C94C]" : "text-[#D5C3B6]"}
+                  className={star <= Math.round(ratingAvg) ? "text-[#F2C94C] fill-[#F2C94C]" : "text-[#D5C3B6]"}
                 />
               ))}
             </div>
-            <p className="text-sm text-[#75524C]">{totalReviews} reseñas</p>
+            <p className="text-sm text-[#75524C]">{ratingCount} reseñas</p>
           </div>
         </div>
 
         {/* Reviews list */}
         <div className="space-y-4">
-          {mockReviews.map((review) => (
+          {reviews.length === 0 ? (
+            <p className="text-sm text-[#75524C]">Aún no tienes reseñas publicadas.</p>
+          ) : null}
+          {reviews.map((review) => (
             <div key={review.id} className="bg-white p-4 rounded-lg border border-[#D5C3B6]/30">
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white font-bold text-sm shrink-0">

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { 
   User, 
   Bell, 
@@ -17,24 +17,61 @@ import {
   CheckCircle,
   Loader2,
 } from "lucide-react"
+import { getLawyerOwnProfile } from "@/lib/queries/lawyer-self"
+import { updateLawyerProfile } from "@/lib/actions/lawyer"
+import { signOut } from "@/lib/actions/auth"
+import { uploadProfileAvatar } from "@/lib/actions/profile"
 
 export default function LawyerSettingsPage() {
   const [activeTab, setActiveTab] = useState("profile")
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
   const [profile, setProfile] = useState({
-    name: "Lic. Carlos Rodriguez",
-    email: "carlos.rodriguez@lawfirm.com",
-    phone: "+52 55 1234 5678",
-    specialty: "Derecho Corporativo",
-    licenseNumber: "CDMX-12345",
-    yearsExperience: "15",
-    bio: "Abogado especializado en derecho corporativo con mas de 15 anos de experiencia en fusiones y adquisiciones, contratos comerciales y gobierno corporativo.",
-    location: "Ciudad de Mexico",
-    hourlyRate: "2500"
+    name: "",
+    email: "",
+    phone: "",
+    specialty: "",
+    licenseNumber: "",
+    yearsExperience: "0",
+    bio: "",
+    location: "",
+    hourlyRate: "0",
   })
+
+  useEffect(() => {
+    getLawyerOwnProfile().then((row) => {
+      if (!row) return
+      const lp = row.lawyer_profiles as Record<string, unknown> | null | undefined
+      const specs = (lp?.specialties as string[]) ?? []
+      setProfile({
+        name: String(row.full_name ?? ""),
+        email: String(row.email ?? ""),
+        phone: String(row.phone ?? ""),
+        specialty: specs[0] ?? "",
+        licenseNumber: String(lp?.license_number ?? ""),
+        yearsExperience: String(lp?.experience_years ?? 0),
+        bio: String(row.bio ?? ""),
+        location: String(row.city ?? ""),
+        hourlyRate:
+          lp?.hourly_rate != null && lp.hourly_rate !== ""
+            ? String(lp.hourly_rate)
+            : "0",
+      })
+      setAvatarUrl(row.avatar_url ? String(row.avatar_url) : null)
+    })
+  }, [])
+
+  const initials = useMemo(() => {
+    const parts = profile.name.split(/\s+/).filter(Boolean)
+    if (parts.length >= 2)
+      return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase()
+    return (profile.name.slice(0, 2) || "?").toUpperCase()
+  }, [profile.name])
 
   const [notifications, setNotifications] = useState({
     email: true,
@@ -67,7 +104,21 @@ export default function LawyerSettingsPage() {
 
   const handleSave = async () => {
     setSaving(true)
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    if (activeTab === "profile") {
+      await updateLawyerProfile({
+        full_name: profile.name,
+        title: profile.specialty || undefined,
+        phone: profile.phone,
+        bio: profile.bio,
+        city: profile.location,
+        license_number: profile.licenseNumber,
+        experience_years: parseInt(profile.yearsExperience, 10) || 0,
+        hourly_rate: parseFloat(profile.hourlyRate) || 0,
+        specialties: profile.specialty ? [profile.specialty] : [],
+      })
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 600))
+    }
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
@@ -117,11 +168,41 @@ export default function LawyerSettingsPage() {
               
               {/* Avatar */}
               <div className="flex items-center gap-6">
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    setAvatarUploading(true)
+                    const fd = new FormData()
+                    fd.append("file", file)
+                    const res = await uploadProfileAvatar(fd)
+                    e.target.value = ""
+                    if ("avatarUrl" in res && res.avatarUrl) setAvatarUrl(res.avatarUrl)
+                    setAvatarUploading(false)
+                  }}
+                />
                 <div className="relative">
-                  <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center text-primary text-2xl font-bold">
-                    CR
-                  </div>
-                  <button className="absolute bottom-0 right-0 p-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt=""
+                      className="w-24 h-24 rounded-full object-cover border border-border"
+                    />
+                  ) : (
+                    <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center text-primary text-2xl font-bold">
+                      {initials}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    disabled={avatarUploading}
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="absolute bottom-0 right-0 p-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
                     <Camera className="w-4 h-4" />
                   </button>
                 </div>
@@ -155,8 +236,9 @@ export default function LawyerSettingsPage() {
                   <input
                     type="email"
                     value={profile.email}
-                    onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                    className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    readOnly
+                    title="El correo se gestiona desde tu cuenta de acceso"
+                    className="w-full px-4 py-2 bg-muted/80 border border-border rounded-lg text-muted-foreground cursor-not-allowed"
                   />
                 </div>
                 <div>
@@ -179,7 +261,11 @@ export default function LawyerSettingsPage() {
                     onChange={(e) => setProfile({ ...profile, specialty: e.target.value })}
                     className="w-full px-4 py-2 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                   >
-                    {specialties.map((specialty) => (
+                    <option value="">Selecciona especialidad</option>
+                    {(profile.specialty && !specialties.includes(profile.specialty)
+                      ? [profile.specialty, ...specialties]
+                      : specialties
+                    ).map((specialty) => (
                       <option key={specialty} value={specialty}>{specialty}</option>
                     ))}
                   </select>
@@ -243,8 +329,17 @@ export default function LawyerSettingsPage() {
               </div>
 
               <div className="flex justify-end">
-                <button className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
-                  <Save className="w-4 h-4" />
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
                   Guardar Cambios
                 </button>
               </div>
@@ -523,6 +618,21 @@ export default function LawyerSettingsPage() {
                     <option value="America/Tijuana">(GMT-8) Tijuana</option>
                     <option value="America/Cancun">(GMT-5) Cancun</option>
                   </select>
+                </div>
+
+                <div className="p-4 bg-muted rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-foreground">Cerrar sesión</p>
+                    <p className="text-sm text-muted-foreground">Salir de tu cuenta en este dispositivo</p>
+                  </div>
+                  <form action={signOut}>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 border border-border rounded-lg hover:bg-background transition-colors"
+                    >
+                      Cerrar sesión
+                    </button>
+                  </form>
                 </div>
               </div>
             </div>

@@ -52,3 +52,14 @@ export async function getIncomingRequests(lawyerId: string) {
 
   return data ?? []
 }
+
+export async function getClientCasePosts() {
+  const supabase = createClient()
+  const { data } = await supabase
+    .from("client_case_posts")
+    .select("*")
+    .eq("status", "open")
+    .order("created_at", { ascending: false })
+
+  return data ?? []
+}

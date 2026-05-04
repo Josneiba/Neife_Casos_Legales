@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   Plus,
   FileText,
@@ -8,42 +8,152 @@ import {
   CheckCircle,
   Upload,
   Download,
-  Eye,
   X,
   Loader2,
   AlertCircle,
   RefreshCw,
   MessageSquare,
-  Calendar,
   XCircle,
 } from "lucide-react"
 import Link from "next/link"
-import { mockCases, mockDocuments, mockNextSteps, statusConfig, specialties } from "@/lib/data"
+import { statusConfig, specialties } from "@/lib/data"
+import { getClientCases } from "@/lib/queries/cases"
+import {
+  getCaseDocuments,
+  getCaseActivities,
+  getNextStepsForCase,
+} from "@/lib/queries/case-detail"
+import {
+  uploadCaseDocument,
+  getCaseDocumentSignedUrl,
+  updateNextStepCompleted,
+} from "@/lib/actions/case-detail"
+import { createClient } from "@/lib/supabase/client"
 
 type TabType = "active" | "waiting" | "pending" | "completed" | "all"
 type DetailTab = "summary" | "documents" | "activity" | "steps"
 
+type ClientCaseView = {
+  id: string
+  title: string
+  type: string
+  status: keyof typeof statusConfig
+  progress: number
+  description: string
+  createdAt: string
+  lastUpdate: string
+  nextAction: string
+  lawyer: { name: string; specialization: string }
+}
+
+function activityVisual(type: string) {
+  const t = (type || "").toLowerCase()
+  if (t.includes("document")) return { Icon: FileText, bg: "bg-[#75524C]" }
+  if (t.includes("message")) return { Icon: MessageSquare, bg: "bg-[#C27F79]" }
+  if (t.includes("status") || t.includes("step")) return { Icon: RefreshCw, bg: "bg-[#5E8B8C]" }
+  return { Icon: Plus, bg: "bg-[#2D3C3C]" }
+}
+
+function normalizeClientCase(c: Record<string, unknown>): ClientCaseView {
+  const lawyer = c.lawyer as
+    | {
+        full_name?: string | null
+        lawyer_profiles?: { specialties?: string[] | null } | null
+      }
+    | null
+    | undefined
+  const lp = lawyer?.lawyer_profiles
+  const st = (c.status as string) ?? "waiting"
+  const statusKey = st in statusConfig ? (st as keyof typeof statusConfig) : "waiting"
+  return {
+    id: String(c.id),
+    title: String(c.title ?? ""),
+    type: String(c.type ?? ""),
+    status: statusKey,
+    progress: Number(c.progress ?? 0),
+    description: String(c.description ?? ""),
+    createdAt: c.created_at
+      ? new Date(c.created_at as string).toLocaleDateString("es-CL")
+      : "",
+    lastUpdate: c.updated_at
+      ? new Date(c.updated_at as string).toLocaleDateString("es-CL")
+      : "",
+    nextAction: String(c.next_action ?? ""),
+    lawyer: {
+      name: lawyer?.full_name ?? "—",
+      specialization: lp?.specialties?.[0] ?? "",
+    },
+  }
+}
+
 export default function CasesPage() {
   const [loading, setLoading] = useState(true)
+  const [cases, setCases] = useState<ClientCaseView[]>([])
   const [activeTab, setActiveTab] = useState<TabType>("all")
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState<DetailTab>("summary")
   const [showNewCaseModal, setShowNewCaseModal] = useState(false)
   const [newCaseLoading, setNewCaseLoading] = useState(false)
 
+  const [detailDocs, setDetailDocs] = useState<Record<string, unknown>[]>([])
+  const [detailActs, setDetailActs] = useState<Record<string, unknown>[]>([])
+  const [detailSteps, setDetailSteps] = useState<Record<string, unknown>[]>([])
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [docUploading, setDocUploading] = useState(false)
+  const docInputRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800)
-    return () => clearTimeout(timer)
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        setLoading(false)
+        return
+      }
+      getClientCases(user.id).then((data) => {
+        const list = (data ?? []).map((row) =>
+          normalizeClientCase(row as Record<string, unknown>)
+        )
+        setCases(list)
+        if (list.length > 0) setSelectedCaseId(list[0].id)
+        setLoading(false)
+      })
+    })
   }, [])
 
-  const filteredCases = mockCases.filter((c) => {
+  useEffect(() => {
+    if (!selectedCaseId) return
+    setDetailLoading(true)
+    Promise.all([
+      getCaseDocuments(selectedCaseId),
+      getCaseActivities(selectedCaseId),
+      getNextStepsForCase(selectedCaseId),
+    ]).then(([d, a, s]) => {
+      setDetailDocs(d as Record<string, unknown>[])
+      setDetailActs(a as Record<string, unknown>[])
+      setDetailSteps(s as Record<string, unknown>[])
+      setDetailLoading(false)
+    })
+  }, [selectedCaseId])
+
+  const refreshCaseDetail = async (caseId: string) => {
+    const [d, a, s] = await Promise.all([
+      getCaseDocuments(caseId),
+      getCaseActivities(caseId),
+      getNextStepsForCase(caseId),
+    ])
+    setDetailDocs(d as Record<string, unknown>[])
+    setDetailActs(a as Record<string, unknown>[])
+    setDetailSteps(s as Record<string, unknown>[])
+  }
+
+  const filteredCases = cases.filter((c) => {
     if (activeTab === "all") return true
     return c.status === activeTab
   })
 
-  const selectedCase = mockCases.find((c) => c.id === selectedCaseId)
+  const selectedCase = cases.find((c) => c.id === selectedCaseId)
 
-  const waitingCount = mockCases.filter(c => c.status === "waiting").length
+  const waitingCount = cases.filter((c) => c.status === "waiting").length
   const tabs: { key: TabType; label: string; badge?: number }[] = [
     { key: "active", label: "Activos" },
     { key: "waiting", label: "En espera", badge: waitingCount },
@@ -305,121 +415,210 @@ export default function CasesPage() {
 
                 {detailTab === "documents" && (
                   <div className="space-y-4">
-                    {/* Upload zone */}
+                    <input
+                      ref={docInputRef}
+                      type="file"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (!file || !selectedCaseId) return
+                        setDocUploading(true)
+                        const fd = new FormData()
+                        fd.append("case_id", selectedCaseId)
+                        fd.append("file", file)
+                        await uploadCaseDocument(fd)
+                        e.target.value = ""
+                        await refreshCaseDetail(selectedCaseId)
+                        setDocUploading(false)
+                      }}
+                    />
                     <div className="border-2 border-dashed border-[#D5C3B6] rounded-lg p-8 text-center">
                       <Upload className="mx-auto text-[#D5C3B6] mb-2" size={32} />
                       <p className="text-[#75524C] mb-2">
-                        Arrastra archivos aquí o haz clic para subir
+                        Sube documentos del caso (PDF, imágenes, etc.)
                       </p>
-                      <button className="text-[#5E8B8C] hover:underline text-sm">
-                        Seleccionar archivos
+                      <button
+                        type="button"
+                        disabled={docUploading || !selectedCaseId}
+                        onClick={() => docInputRef.current?.click()}
+                        className="text-[#5E8B8C] hover:underline text-sm disabled:opacity-50"
+                      >
+                        {docUploading ? "Subiendo…" : "Seleccionar archivos"}
                       </button>
                     </div>
 
-                    {/* Documents table */}
                     <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-[#D5C3B6]/30">
-                            <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Nombre</th>
-                            <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Tipo</th>
-                            <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Fecha</th>
-                            <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Subido por</th>
-                            <th className="text-right py-3 px-4 text-sm font-medium text-[#75524C]">Acciones</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {mockDocuments.map((doc) => (
-                            <tr key={doc.id} className="border-b border-[#D5C3B6]/30 hover:bg-[#F8F7F4]">
-                              <td className="py-3 px-4">
-                                <div className="flex items-center gap-2">
-                                  <FileText size={16} className="text-[#5E8B8C]" />
-                                  <span className="text-sm text-[#2D3C3C]">{doc.name}</span>
-                                </div>
-                              </td>
-                              <td className="py-3 px-4 text-sm text-[#75524C]">{doc.type}</td>
-                              <td className="py-3 px-4 text-sm text-[#75524C]">{doc.date}</td>
-                              <td className="py-3 px-4 text-sm text-[#75524C]">{doc.uploadedBy}</td>
-                              <td className="py-3 px-4 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <button className="p-1 text-[#75524C] hover:text-[#5E8B8C]">
-                                    <Eye size={16} />
-                                  </button>
-                                  <button className="p-1 text-[#75524C] hover:text-[#5E8B8C]">
-                                    <Download size={16} />
-                                  </button>
-                                </div>
-                              </td>
+                      {detailLoading ? (
+                        <p className="text-sm text-[#75524C] py-4">Cargando…</p>
+                      ) : (
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-[#D5C3B6]/30">
+                              <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Nombre</th>
+                              <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Tipo</th>
+                              <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Fecha</th>
+                              <th className="text-left py-3 px-4 text-sm font-medium text-[#75524C]">Subido por</th>
+                              <th className="text-right py-3 px-4 text-sm font-medium text-[#75524C]">Acciones</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {detailDocs.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="py-6 text-center text-sm text-[#75524C]">
+                                  No hay documentos aún.
+                                </td>
+                              </tr>
+                            ) : (
+                              detailDocs.map((doc) => {
+                                const path = String(doc.file_url ?? "")
+                                const created = doc.created_at
+                                  ? new Date(doc.created_at as string).toLocaleDateString("es-CL")
+                                  : ""
+                                const role = doc.uploaded_by_role as string | undefined
+                                const by =
+                                  role === "lawyer"
+                                    ? "Abogado"
+                                    : role === "client"
+                                      ? "Cliente"
+                                      : "—"
+                                return (
+                                  <tr
+                                    key={String(doc.id)}
+                                    className="border-b border-[#D5C3B6]/30 hover:bg-[#F8F7F4]"
+                                  >
+                                    <td className="py-3 px-4">
+                                      <div className="flex items-center gap-2">
+                                        <FileText size={16} className="text-[#5E8B8C]" />
+                                        <span className="text-sm text-[#2D3C3C]">{String(doc.name)}</span>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-4 text-sm text-[#75524C]">
+                                      {String(doc.file_type ?? "—")}
+                                    </td>
+                                    <td className="py-3 px-4 text-sm text-[#75524C]">{created}</td>
+                                    <td className="py-3 px-4 text-sm text-[#75524C]">{by}</td>
+                                    <td className="py-3 px-4 text-right">
+                                      <button
+                                        type="button"
+                                        className="p-1 text-[#75524C] hover:text-[#5E8B8C]"
+                                        title="Descargar"
+                                        onClick={async () => {
+                                          const r = await getCaseDocumentSignedUrl(path)
+                                          if ("url" in r && r.url) window.open(r.url, "_blank", "noopener,noreferrer")
+                                        }}
+                                      >
+                                        <Download size={16} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                )
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      )}
                     </div>
                   </div>
                 )}
 
                 {detailTab === "activity" && (
                   <div className="relative">
-                    {/* Timeline vertical line */}
                     <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-[#D5C3B6]/50" />
-                    
-                    {[
-                      { date: "25 Ene 2024", event: "Documento subido", detail: "Certificado de Matrimonio.pdf", icon: FileText, bgColor: "bg-[#75524C]" },
-                      { date: "22 Ene 2024", event: "Estado actualizado", detail: "El caso pasó a estado 'Activo'", icon: RefreshCw, bgColor: "bg-[#5E8B8C]" },
-                      { date: "20 Ene 2024", event: "Mensaje recibido", detail: "Dra. María González envió un mensaje", icon: MessageSquare, bgColor: "bg-[#C27F79]" },
-                      { date: "18 Ene 2024", event: "Cita agendada", detail: "Reunión programada para el 25 de Enero", icon: Calendar, bgColor: "bg-[#F2C94C]" },
-                      { date: "15 Ene 2024", event: "Caso creado", detail: "El caso fue iniciado", icon: Plus, bgColor: "bg-[#2D3C3C]" },
-                    ].map((item, index) => (
-                      <div key={index} className="flex gap-4 mb-6 relative">
-                        {/* Icon circle on the line */}
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ${item.bgColor}`}>
-                          <item.icon size={16} className={item.bgColor === "bg-[#F2C94C]" ? "text-[#2D3C3C]" : "text-white"} />
-                        </div>
-                        {/* Content */}
-                        <div className="bg-white border border-[#D5C3B6]/30 rounded-lg p-4 flex-1 hover:shadow-md transition-shadow">
-                          <p className="text-[#2D3C3C] font-medium">{item.event}</p>
-                          <p className="text-sm text-[#75524C]">{item.detail}</p>
-                          <p className="text-xs text-[#D5C3B6] mt-1">{item.date}</p>
-                        </div>
-                      </div>
-                    ))}
+                    {detailLoading ? (
+                      <p className="text-sm text-[#75524C] pl-14 py-4">Cargando…</p>
+                    ) : detailActs.length === 0 ? (
+                      <p className="text-sm text-[#75524C] pl-14 py-4">Sin actividad registrada.</p>
+                    ) : (
+                      detailActs.map((row) => {
+                        const { Icon, bg } = activityVisual(String(row.type ?? ""))
+                        const when = row.created_at
+                          ? new Date(row.created_at as string).toLocaleString("es-CL")
+                          : ""
+                        return (
+                          <div key={String(row.id)} className="flex gap-4 mb-6 relative">
+                            <div
+                              className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ${bg}`}
+                            >
+                              <Icon size={16} className="text-white" />
+                            </div>
+                            <div className="bg-white border border-[#D5C3B6]/30 rounded-lg p-4 flex-1 hover:shadow-md transition-shadow">
+                              <p className="text-[#2D3C3C] font-medium">{String(row.title ?? "")}</p>
+                              <p className="text-sm text-[#75524C]">{String(row.description ?? "")}</p>
+                              <p className="text-xs text-[#D5C3B6] mt-1">{when}</p>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
                   </div>
                 )}
 
                 {detailTab === "steps" && (
                   <div className="space-y-3">
-                    {mockNextSteps.map((step) => (
-                      <div
-                        key={step.id}
-                        className={`flex items-start gap-4 p-4 border rounded-lg ${
-                          step.completed ? "border-[#D5C3B6]/30 opacity-50" : "border-[#D5C3B6]/30"
-                        }`}
-                      >
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                          step.completed ? "bg-[#5E8B8C]" : "border-2 border-[#D5C3B6]"
-                        }`}>
-                          {step.completed && <CheckCircle size={14} className="text-white" />}
-                        </div>
-                        <div className="flex-1">
-                          <p className={`font-medium ${step.completed ? "line-through text-[#75524C]" : "text-[#2D3C3C]"}`}>
-                            {step.text}
-                          </p>
-                          <div className="flex items-center gap-4 mt-1">
-                            <span className="text-xs text-[#75524C] flex items-center gap-1">
-                              <Clock size={12} />
-                              {step.dueDate}
-                            </span>
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              step.assignedTo === "client" 
-                                ? "bg-[#5E8B8C]/10 text-[#5E8B8C]"
-                                : "bg-[#75524C]/10 text-[#75524C]"
-                            }`}>
-                              {step.assignedTo === "client" ? "Tú" : "Abogado"}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                    {detailLoading ? (
+                      <p className="text-sm text-[#75524C]">Cargando…</p>
+                    ) : detailSteps.length === 0 ? (
+                      <p className="text-sm text-[#75524C]">
+                        Tu abogado aún no ha definido próximos pasos.
+                      </p>
+                    ) : (
+                      detailSteps.map((step) => {
+                        const id = String(step.id)
+                        const completed = Boolean(step.completed)
+                        const due = step.due_date
+                          ? new Date(step.due_date as string).toLocaleDateString("es-CL")
+                          : "—"
+                        const assigned = step.assigned_to as string
+                        return (
+                          <button
+                            type="button"
+                            key={id}
+                            onClick={async () => {
+                              await updateNextStepCompleted(id, !completed)
+                              if (selectedCaseId) await refreshCaseDetail(selectedCaseId)
+                            }}
+                            className={`w-full text-left flex items-start gap-4 p-4 border rounded-lg transition-colors ${
+                              completed
+                                ? "border-[#D5C3B6]/30 opacity-60"
+                                : "border-[#D5C3B6]/30 hover:bg-[#F8F7F4]"
+                            }`}
+                          >
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                                completed ? "bg-[#5E8B8C]" : "border-2 border-[#D5C3B6]"
+                              }`}
+                            >
+                              {completed && <CheckCircle size={14} className="text-white" />}
+                            </div>
+                            <div className="flex-1">
+                              <p
+                                className={`font-medium ${
+                                  completed ? "line-through text-[#75524C]" : "text-[#2D3C3C]"
+                                }`}
+                              >
+                                {String(step.text ?? "")}
+                              </p>
+                              <div className="flex items-center gap-4 mt-1">
+                                <span className="text-xs text-[#75524C] flex items-center gap-1">
+                                  <Clock size={12} />
+                                  {due}
+                                </span>
+                                <span
+                                  className={`text-xs px-2 py-0.5 rounded ${
+                                    assigned === "client"
+                                      ? "bg-[#5E8B8C]/10 text-[#5E8B8C]"
+                                      : "bg-[#75524C]/10 text-[#75524C]"
+                                  }`}
+                                >
+                                  {assigned === "client" ? "Tú" : "Abogado"}
+                                </span>
+                                <span className="text-xs text-[#D5C3B6]">Clic para marcar</span>
+                              </div>
+                            </div>
+                          </button>
+                        )
+                      })
+                    )}
                   </div>
                 )}
               </div>

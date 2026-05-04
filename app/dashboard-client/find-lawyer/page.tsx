@@ -14,12 +14,20 @@ import {
   MessageSquare,
   Briefcase,
 } from "lucide-react"
-import { mockLawyers, specialties } from "@/lib/data"
+import { specialties } from "@/lib/data"
+import {
+  getLawyers,
+  getLawyerReviews,
+  lawyerSearchRowToCard,
+  type LawyerCard,
+} from "@/lib/queries/lawyers"
+import { createCase } from "@/lib/actions/cases"
+import { sendInitialMessage } from "@/lib/actions/messages"
 
-type Lawyer = typeof mockLawyers[0]
+type Lawyer = LawyerCard
 
 export default function FindLawyerPage() {
-  const [loading, setLoading] = useState(true)
+  const [dataLoading, setDataLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [budgetRange, setBudgetRange] = useState([50, 300])
   const [selectedSpecialty, setSelectedSpecialty] = useState("")
@@ -49,20 +57,50 @@ export default function FindLawyerPage() {
   })
 
   // Track contacted lawyers
-  const [contactedLawyers, setContactedLawyers] = useState<Set<number>>(new Set())
+  const [lawyers, setLawyers] = useState<LawyerCard[]>([])
+  const [contactedLawyers, setContactedLawyers] = useState<Set<string>>(new Set())
+  const [detailReviews, setDetailReviews] = useState<
+    LawyerCard["reviewsList"]
+  >()
+  const [caseActionError, setCaseActionError] = useState("")
+  const [messageActionError, setMessageActionError] = useState("")
 
   const getInitials = (name: string) => name.split(" ").map(n => n[0]).join("").slice(0, 2)
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800)
-    return () => clearTimeout(timer)
+    getLawyers()
+      .then((rows) => {
+        const cards = rows
+          .map((r) => lawyerSearchRowToCard(r))
+          .filter((c): c is LawyerCard => c != null)
+        setLawyers(cards)
+      })
+      .finally(() => setDataLoading(false))
   }, [])
 
-  const filteredLawyers = mockLawyers.filter((lawyer) => {
-    if (searchQuery && !lawyer.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
-        !lawyer.specialty.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false
+  useEffect(() => {
+    if (!selectedLawyer) {
+      setDetailReviews(undefined)
+      return
     }
+    getLawyerReviews(selectedLawyer.id).then((rows) => {
+      setDetailReviews(
+        rows.map((r) => ({
+          author:
+            (r.client as { full_name?: string } | null)?.full_name ?? "Cliente",
+          text: (r.text as string) ?? "",
+          rating: r.rating as number,
+          date: r.created_at
+            ? new Date(r.created_at as string).toLocaleDateString("es-CL")
+            : "",
+        }))
+      )
+    })
+  }, [selectedLawyer?.id])
+
+  const filteredLawyers = lawyers.filter((lawyer) => {
+    const rate = lawyer.rate
+    if (rate < budgetRange[0] || rate > budgetRange[1]) return false
     if (selectedSpecialty && lawyer.specialty !== selectedSpecialty) {
       return false
     }
@@ -80,6 +118,15 @@ export default function FindLawyerPage() {
     }
     if (contingency && !lawyer.contingency) {
       return false
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      if (
+        !lawyer.name.toLowerCase().includes(q) &&
+        !lawyer.tags.some((s) => s.toLowerCase().includes(q))
+      ) {
+        return false
+      }
     }
     return true
   })
@@ -321,7 +368,7 @@ export default function FindLawyerPage() {
     </div>
   )
 
-  if (loading) {
+  if (dataLoading) {
     return (
       <div className="flex gap-6">
         <div className="hidden lg:block w-72 shrink-0">
@@ -649,7 +696,7 @@ export default function FindLawyerPage() {
                   <span className="text-sm text-[#75524C]">{selectedLawyer.reviews} en total</span>
                 </div>
                 <div className="space-y-3">
-                  {selectedLawyer.reviewsList?.slice(0, 3).map((review, i) => (
+                  {detailReviews?.slice(0, 3).map((review, i) => (
                     <div key={i} className="bg-[#F8F7F4] rounded-lg p-4">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
@@ -750,6 +797,9 @@ export default function FindLawyerPage() {
                   rows={4}
                   className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#5E8B8C] text-sm"
                 />
+                {messageActionError && (
+                  <p className="text-xs text-[#C27F79] mt-2">{messageActionError}</p>
+                )}
                 <div className="flex gap-3 mt-4">
                   <button
                     onClick={() => setMessageModalOpen(false)}
@@ -758,8 +808,23 @@ export default function FindLawyerPage() {
                     Cancelar
                   </button>
                   <button
-                    onClick={() => {
-                      if (messageToSend.trim()) setMessageSent(true)
+                    type="button"
+                    onClick={async () => {
+                      if (!messageToSend.trim() || !selectedLawyer) return
+                      setMessageActionError("")
+                      const result = await sendInitialMessage({
+                        lawyer_id: selectedLawyer.id,
+                        text: messageToSend,
+                      })
+                      if ("success" in result && result.success) {
+                        setMessageSent(true)
+                      } else {
+                        setMessageActionError(
+                          "error" in result && result.error
+                            ? result.error
+                            : "No se pudo enviar el mensaje."
+                        )
+                      }
                     }}
                     disabled={!messageToSend.trim()}
                     className="flex-1 py-2 bg-[#5E8B8C] text-white rounded-lg hover:bg-[#5E8B8C]/90 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -888,15 +953,41 @@ export default function FindLawyerPage() {
                   </div>
                 </div>
 
+                {caseActionError && (
+                  <p className="text-sm text-[#C27F79]">{caseActionError}</p>
+                )}
+
                 <div className="flex gap-3 mt-6">
                   <button onClick={() => setNewCaseModalOpen(false)} className="flex-1 py-3 border border-[#D5C3B6] text-[#75524C] rounded-lg text-sm">
                     Cancelar
                   </button>
                   <button
+                    type="button"
                     onClick={async () => {
-                      if (!caseForm.title || !caseForm.description) return
-                      await new Promise(r => setTimeout(r, 800))
-                      setCaseSubmitted(true)
+                      if (!caseForm.title || !caseForm.description || !selectedLawyer)
+                        return
+                      setCaseActionError("")
+                      const result = await createCase({
+                        title: caseForm.title,
+                        type:
+                          caseForm.area ||
+                          selectedLawyer.specialty ||
+                          selectedLawyer.tags[0] ||
+                          "",
+                        description: caseForm.description,
+                        budget: caseForm.budget,
+                        lawyer_id: selectedLawyer.id,
+                        message: `Hola, quiero iniciar un caso: ${caseForm.description.slice(0, 100)}`,
+                      })
+                      if ("success" in result && result.success) {
+                        setCaseSubmitted(true)
+                      } else {
+                        setCaseActionError(
+                          "error" in result && result.error
+                            ? result.error
+                            : "Error al crear el caso. Intenta de nuevo."
+                        )
+                      }
                     }}
                     disabled={!caseForm.title || !caseForm.description}
                     className="flex-1 py-3 bg-[#75524C] text-white rounded-lg hover:bg-[#75524C]/90 text-sm disabled:opacity-50"

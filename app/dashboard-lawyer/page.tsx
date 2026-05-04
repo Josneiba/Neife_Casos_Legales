@@ -12,18 +12,95 @@ import {
   Search,
   AlertTriangle,
 } from "lucide-react"
-import { mockCases, mockClientCases, statusConfig } from "@/lib/data"
+import { statusConfig } from "@/lib/data"
+import { getLawyerCases } from "@/lib/queries/cases"
+import { createClient } from "@/lib/supabase/client"
+
+type LawyerHomeCase = {
+  id: string
+  status: keyof typeof statusConfig
+  title: string
+  type: string
+  lastUpdate: string
+  progress: number
+}
+
+type ClientPostPreview = {
+  id: string
+  urgency: string
+  type: string
+  description: string
+  budgetMin: number
+  budgetMax: number
+}
 
 export default function LawyerDashboardHome() {
   const [loading, setLoading] = useState(true)
-  const [profileComplete, setProfileComplete] = useState(false) // Starts incomplete for demo
+  const [profileComplete, setProfileComplete] = useState(false)
+  const [cases, setCases] = useState<LawyerHomeCase[]>([])
+  const [clientPosts, setClientPosts] = useState<ClientPostPreview[]>([])
+  const [userName, setUserName] = useState("Abogado")
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800)
-    return () => clearTimeout(timer)
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) {
+        setLoading(false)
+        return
+      }
+      const first =
+        (user.user_metadata?.full_name as string | undefined)?.split(" ")[0] ??
+        "Abogado"
+      setUserName(first)
+
+      const casesData = await getLawyerCases(user.id)
+      setCases(
+        (casesData ?? []).map((row) => {
+          const r = row as {
+            id: string
+            title?: string
+            type?: string
+            status?: string
+            updated_at?: string
+            progress?: number
+          }
+          const st = r.status ?? "waiting"
+          const statusKey =
+            st in statusConfig ? (st as keyof typeof statusConfig) : "waiting"
+          return {
+            id: String(r.id),
+            status: statusKey,
+            title: r.title ?? "—",
+            type: r.type ?? "",
+            lastUpdate: r.updated_at
+              ? new Date(r.updated_at).toLocaleDateString("es-CL")
+              : "",
+            progress: Number(r.progress) || 0,
+          }
+        })
+      )
+
+      const { data: posts } = await supabase
+        .from("client_case_posts")
+        .select("*")
+        .eq("status", "open")
+        .limit(3)
+
+      setClientPosts(
+        (posts ?? []).map((p) => ({
+          id: String(p.id),
+          urgency: String(p.urgency ?? "normal"),
+          type: String(p.type ?? ""),
+          description: String(p.description ?? ""),
+          budgetMin: Number(p.budget_min ?? 0),
+          budgetMax: Number(p.budget_max ?? 0),
+        }))
+      )
+      setLoading(false)
+    })
   }, [])
 
-  const activeCases = mockCases.filter((c) => c.status === "active")
+  const activeCases = cases.filter((c) => c.status === "active")
 
   const stats = [
     {
@@ -130,7 +207,7 @@ export default function LawyerDashboardHome() {
       {/* Welcome banner */}
       <div className="bg-white border border-[#D5C3B6]/30 rounded-lg shadow-sm p-6">
         <h1 className="text-2xl font-bold text-[#2D3C3C]">
-          Bienvenida, Dra. Gonzalez
+          Bienvenido/a, {userName}
         </h1>
         <p className="text-[#75524C]">
           {new Date().toLocaleDateString("es-CL", {
@@ -257,7 +334,7 @@ export default function LawyerDashboardHome() {
           </Link>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {mockClientCases.slice(0, 3).map((clientCase) => {
+          {(clientPosts.length > 0 ? clientPosts : []).slice(0, 3).map((clientCase) => {
             const urgencyColors = {
               normal: "bg-[#5E8B8C]/20 text-[#5E8B8C]",
               urgent: "bg-[#F2C94C]/20 text-[#F2C94C]",

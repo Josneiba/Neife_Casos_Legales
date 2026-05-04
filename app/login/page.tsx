@@ -2,13 +2,13 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { signIn } from "@/lib/actions/auth"
 
 export default function LoginPage() {
-  const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [authError, setAuthError] = useState("")
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -36,19 +36,22 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+    setAuthError("")
     if (!validateForm()) return
-    
+
     setLoading(true)
-    
-    // Simulate login
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    // For demo: redirect based on email domain
-    if (formData.email.includes("abogado")) {
-      router.push("/dashboard-lawyer")
-    } else {
-      router.push("/dashboard-client")
+    try {
+      const result = await signIn({
+        email: formData.email,
+        password: formData.password,
+      })
+      if (result?.error) {
+        setAuthError(result.error)
+      }
+    } catch {
+      // redirect en curso
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -66,6 +69,11 @@ export default function LoginPage() {
           </h1>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {authError && (
+              <p className="text-sm text-[#C27F79] text-center bg-[#C27F79]/10 py-2 rounded-lg">
+                {authError}
+              </p>
+            )}
             {/* Email */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-[#2D3C3C] mb-1">

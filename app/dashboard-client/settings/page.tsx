@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   User,
   DollarSign,
@@ -14,6 +14,9 @@ import {
   CheckCircle,
 } from "lucide-react"
 import { cities } from "@/lib/data"
+import { getMyProfile } from "@/lib/queries/profile"
+import { updateProfile, uploadProfileAvatar } from "@/lib/actions/profile"
+import { signOut } from "@/lib/actions/auth"
 
 type Section = "profile" | "budget" | "notifications" | "security" | "account"
 
@@ -25,6 +28,15 @@ export default function SettingsPage() {
   const [budgetRange, setBudgetRange] = useState(150)
   const [monthlyBudget, setMonthlyBudget] = useState("1500")
 
+  const [fullName, setFullName] = useState("")
+  const [email, setEmail] = useState("")
+  const [phone, setPhone] = useState("")
+  const [city, setCity] = useState("")
+  const [bio, setBio] = useState("")
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
   const [notifications, setNotifications] = useState({
     newMessages: true,
     caseUpdates: true,
@@ -32,9 +44,30 @@ export default function SettingsPage() {
     lawyerResponses: false,
   })
 
+  useEffect(() => {
+    getMyProfile().then((row) => {
+      if (!row) return
+      setFullName(String(row.full_name ?? ""))
+      setEmail(String(row.email ?? ""))
+      setPhone(String(row.phone ?? ""))
+      setCity(String(row.city ?? ""))
+      setBio(String(row.bio ?? ""))
+      setAvatarUrl(row.avatar_url ? String(row.avatar_url) : null)
+    })
+  }, [])
+
   const handleSave = async () => {
     setSaving(true)
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    if (activeSection === "profile") {
+      await updateProfile({
+        full_name: fullName,
+        city,
+        phone,
+        bio,
+      })
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 600))
+    }
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
@@ -91,11 +124,47 @@ export default function SettingsPage() {
 
                 {/* Avatar */}
                 <div className="flex items-center gap-4">
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      setAvatarUploading(true)
+                      const fd = new FormData()
+                      fd.append("file", file)
+                      const res = await uploadProfileAvatar(fd)
+                      e.target.value = ""
+                      if ("avatarUrl" in res && res.avatarUrl) setAvatarUrl(res.avatarUrl)
+                      setAvatarUploading(false)
+                    }}
+                  />
                   <div className="relative">
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white text-2xl font-bold">
-                      JF
-                    </div>
-                    <button className="absolute bottom-0 right-0 w-8 h-8 bg-[#5E8B8C] rounded-full flex items-center justify-center text-white hover:bg-[#5E8B8C]/90">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt=""
+                        className="w-20 h-20 rounded-full object-cover border border-[#D5C3B6]/40"
+                      />
+                    ) : (
+                      <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#5E8B8C] to-[#2D3C3C] flex items-center justify-center text-white text-2xl font-bold">
+                        {fullName
+                          .split(/\s+/)
+                          .filter(Boolean)
+                          .map((n) => n[0])
+                          .join("")
+                          .slice(0, 2)
+                          .toUpperCase() || "?"}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      disabled={avatarUploading}
+                      onClick={() => avatarInputRef.current?.click()}
+                      className="absolute bottom-0 right-0 w-8 h-8 bg-[#5E8B8C] rounded-full flex items-center justify-center text-white hover:bg-[#5E8B8C]/90 disabled:opacity-50"
+                    >
                       <Camera size={14} />
                     </button>
                   </div>
@@ -113,7 +182,8 @@ export default function SettingsPage() {
                     </label>
                     <input
                       type="text"
-                      defaultValue="Javiera Fernández"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
                       className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C]"
                     />
                   </div>
@@ -123,8 +193,10 @@ export default function SettingsPage() {
                     </label>
                     <input
                       type="email"
-                      defaultValue="javiera@email.com"
-                      className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C]"
+                      value={email}
+                      readOnly
+                      className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg bg-[#F8F7F4] text-[#75524C] cursor-not-allowed"
+                      title="El correo se gestiona desde tu cuenta de acceso"
                     />
                   </div>
                   <div>
@@ -133,7 +205,8 @@ export default function SettingsPage() {
                     </label>
                     <input
                       type="tel"
-                      defaultValue="+56 9 1234 5678"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
                       className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C]"
                     />
                   </div>
@@ -142,11 +215,17 @@ export default function SettingsPage() {
                       Ciudad
                     </label>
                     <select
-                      defaultValue="Santiago"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
                       className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C]"
                     >
-                      {cities.map((city) => (
-                        <option key={city} value={city}>{city}</option>
+                      <option value="">Selecciona ciudad</option>
+                      {(
+                        city && !(cities as readonly string[]).includes(city)
+                          ? [city, ...cities]
+                          : cities
+                      ).map((c) => (
+                        <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
                   </div>
@@ -158,7 +237,8 @@ export default function SettingsPage() {
                   </label>
                   <textarea
                     rows={3}
-                    defaultValue="Emprendedora buscando asesoría legal para mi negocio."
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
                     className="w-full px-4 py-3 border border-[#D5C3B6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C]"
                   ></textarea>
                 </div>
@@ -393,6 +473,23 @@ export default function SettingsPage() {
             {activeSection === "account" && (
               <div className="space-y-6">
                 <h2 className="text-lg font-bold text-[#2D3C3C]">Cuenta</h2>
+
+                <div className="p-4 border border-[#D5C3B6]/30 rounded-lg">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                      <p className="font-medium text-[#2D3C3C]">Cerrar sesión</p>
+                      <p className="text-sm text-[#75524C]">Salir de tu cuenta en este dispositivo</p>
+                    </div>
+                    <form action={signOut}>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 border border-[#5E8B8C] text-[#5E8B8C] rounded-lg hover:bg-[#5E8B8C]/10 transition-colors"
+                      >
+                        Cerrar sesión
+                      </button>
+                    </form>
+                  </div>
+                </div>
 
                 <div className="p-4 border border-[#D5C3B6]/30 rounded-lg">
                   <div className="flex items-center justify-between">

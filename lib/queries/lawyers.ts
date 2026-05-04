@@ -1,5 +1,50 @@
 import { createClient } from "@/lib/supabase/client"
 
+/** Vista compatible con las cards de buscar abogado (antes mock). */
+export type LawyerCard = {
+  id: string
+  name: string
+  specialty: string
+  tags: string[]
+  city: string
+  rate: number
+  rating: number
+  reviews: number
+  verified: boolean
+  freeConsult: boolean
+  paymentPlan: boolean
+  contingency: boolean
+  available: boolean
+  experience: number
+  successRate: number
+  bio: string
+  reviewsList?: { author: string; text: string; rating: number; date: string }[]
+}
+
+export function lawyerSearchRowToCard(row: LawyerSearchRow): LawyerCard | null {
+  const lp = row.lawyer_profiles
+  if (!lp) return null
+  const specs = lp.specialties ?? []
+  return {
+    id: row.id,
+    name: row.full_name,
+    specialty: specs[0] ?? "",
+    tags: specs,
+    city: row.city ?? "",
+    rate: Number(lp.hourly_rate ?? 0),
+    rating: Number(lp.rating ?? 0),
+    reviews: lp.review_count ?? 0,
+    verified: lp.verified ?? false,
+    freeConsult: lp.free_consult ?? false,
+    paymentPlan: lp.payment_plan ?? false,
+    contingency: lp.contingency ?? false,
+    available: lp.available ?? false,
+    experience: lp.experience_years ?? 0,
+    successRate: lp.success_rate ?? 0,
+    bio: row.bio ?? "",
+  }
+}
+
 export type LawyerSearchRow = {
   id: string
   full_name: string
