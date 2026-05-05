@@ -29,7 +29,7 @@ import {
 } from "@/lib/queries/case-detail"
 import {
   uploadCaseDocument,
-  getCaseDocumentSignedUrl,
+  downloadDecryptedDocument,
   updateNextStepCompleted,
   addNextStepForCase,
   saveCaseNote,
@@ -117,6 +117,20 @@ function normalizeLawyerCase(c: Record<string, unknown>): LawyerCaseView {
 
 type TabType = "requests" | "active" | "pending" | "completed" | "all"
 type DetailTab = "summary" | "documents" | "activity" | "steps" | "notes" | "billing"
+
+const ALLOWED_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx", "txt"]
+const MAX_FILE_SIZE_MB = 25
+
+function validateFile(file: File): string | null {
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return `Tipo de archivo no permitido. Extensiones aceptadas: ${ALLOWED_EXTENSIONS.join(", ")}`
+  }
+  if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+    return `El archivo supera el límite de ${MAX_FILE_SIZE_MB} MB`
+  }
+  return null
+}
 
 function activityVisual(type: string) {
   const t = (type || "").toLowerCase()
@@ -615,6 +629,12 @@ export default function LawyerCasesPage() {
                       onChange={async (e) => {
                         const file = e.target.files?.[0]
                         if (!file || !selectedCaseId) return
+                        const validationError = validateFile(file)
+                        if (validationError) {
+                          alert(validationError)
+                          e.target.value = ""
+                          return
+                        }
                         setDocUploading(true)
                         const fd = new FormData()
                         fd.append("case_id", selectedCaseId)
@@ -679,8 +699,16 @@ export default function LawyerCasesPage() {
                                         type="button"
                                         className="text-sm text-[#75524C] hover:underline"
                                         onClick={async () => {
-                                          const r = await getCaseDocumentSignedUrl(path)
-                                          if ("url" in r && r.url) window.open(r.url, "_blank", "noopener,noreferrer")
+                                          const r = await downloadDecryptedDocument(path)
+                                          if ("dataUrl" in r && r.dataUrl) {
+                                            // Crear link temporal para descarga directa (el archivo nunca va a una URL pública)
+                                            const a = document.createElement("a")
+                                            a.href = r.dataUrl
+                                            a.download = r.fileName
+                                            document.body.appendChild(a)
+                                            a.click()
+                                            document.body.removeChild(a)
+                                          }
                                         }}
                                       >
                                         Descargar

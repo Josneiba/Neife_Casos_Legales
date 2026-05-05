@@ -228,3 +228,65 @@ export async function updateCaseStatus(caseId: string, status: string) {
   revalidatePath("/dashboard-client/cases")
   return { success: true as const }
 }
+
+export async function submitReview(data: {
+  case_id: string
+  lawyer_id: string
+  rating: number
+  comment?: string
+}) {
+  const supabase = createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" as const }
+
+  // Verificar que el caso es del cliente y está completado
+  const { data: caseRow } = await supabase
+    .from("cases")
+    .select("client_id, status")
+    .eq("id", data.case_id)
+    .single()
+
+  if (!caseRow || caseRow.client_id !== user.id) {
+    return { error: "No tienes permiso para reseñar este caso" as const }
+  }
+  if (caseRow.status !== "completed") {
+    return { error: "Solo puedes reseñar casos completados" as const }
+  }
+
+  // Verificar que no haya reseña previa
+  const { data: existing } = await supabase
+    .from("reviews")
+    .select("id")
+    .eq("case_id", data.case_id)
+    .eq("client_id", user.id)
+    .maybeSingle()
+
+  if (existing) return { error: "Ya dejaste una reseña para este caso" as const }
+
+  const { error } = await supabase.from("reviews").insert({
+    case_id: data.case_id,
+    lawyer_id: data.lawyer_id,
+    client_id: user.id,
+    rating: data.rating,
+    comment: data.comment || null,
+  })
+
+  if (error) return { error: error.message }
+
+  // Actualizar rating promedio en lawyer_profiles
+  const { data: allReviews } = await supabase
+    .from("reviews")
+    .select("rating")
+    .eq("lawyer_id", data.lawyer_id)
+
+  if (allReviews && allReviews.length > 0) {
+    const avg = allReviews.reduce((s, r) => s + r.rating, 0) / allReviews.length
+    await supabase
+      .from("lawyer_profiles")
+      .update({ rating: Math.round(avg * 10) / 10, review_count: allReviews.length })
+      .eq("id", data.lawyer_id)
+  }
+
+  revalidatePath("/dashboard-client/cases")
+  return { success: true as const }
+}

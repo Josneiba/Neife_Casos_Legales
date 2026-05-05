@@ -17,7 +17,7 @@ import {
   Phone,
   MapPin
 } from "lucide-react"
-import { specialties } from "@/lib/data"
+import { specialties, referencePrices } from "@/lib/data"
 
 const features = [
   {
@@ -373,6 +373,30 @@ export default function LandingPage() {
               >
                 {specialty}
               </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Reference Prices */}
+      <section className="py-16 px-4 bg-[#F8F7F4]">
+        <div className="max-w-3xl mx-auto">
+          <h2 className="text-2xl font-bold text-[#2D3C3C] text-center mb-2">
+            Precios de referencia
+          </h2>
+          <p className="text-sm text-[#75524C] text-center mb-8">
+            Los honorarios finales los acuerdan cliente y abogado directamente.
+            Estos rangos son referenciales según el mercado chileno.
+          </p>
+          <div className="grid gap-3">
+            {referencePrices.map((item) => (
+              <div key={item.service} className="bg-white rounded-2xl px-5 py-4 border border-[#D5C3B6]/40 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-[#2D3C3C]">{item.service}</p>
+                  <p className="text-xs text-[#75524C] mt-0.5">Tiempo estimado: {item.time}</p>
+                </div>
+                <p className="text-sm font-bold text-[#5E8B8C] shrink-0 ml-4">{item.range}</p>
+              </div>
             ))}
           </div>
         </div>

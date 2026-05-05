@@ -2,6 +2,7 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { encryptBuffer, decryptBuffer } from "@/lib/encryption"
 
 function sanitizeFileName(name: string) {
   return name.replace(/[^\w.\-()+ ]/g, "_").slice(0, 180) || "file"
@@ -9,15 +10,33 @@ function sanitizeFileName(name: string) {
 
 export async function uploadCaseDocument(formData: FormData) {
   const supabase = createServerSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "No autenticado" as const }
 
   const caseId = formData.get("case_id") as string | null
   const file = formData.get("file") as File | null
   if (!caseId || !file || file.size === 0) {
     return { error: "Archivo o caso inválido" as const }
+  }
+
+  // Validar tipo de archivo permitido
+  const ALLOWED_TYPES = [
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+  ]
+  if (!ALLOWED_TYPES.includes(file.type)) {
+    return { error: "Tipo de archivo no permitido. Solo PDF, imágenes y documentos Word." as const }
+  }
+
+  // Validar tamaño máximo: 25 MB
+  const MAX_SIZE = 25 * 1024 * 1024
+  if (file.size > MAX_SIZE) {
+    return { error: "El archivo no puede superar 25 MB." as const }
   }
 
   const { data: caseRow, error: caseErr } = await supabase
@@ -32,13 +51,25 @@ export async function uploadCaseDocument(formData: FormData) {
   if (!isClient && !isLawyer) return { error: "Sin permiso" as const }
 
   const uploadedByRole = isClient ? "client" : "lawyer"
-  const path = `${caseId}/${crypto.randomUUID()}-${sanitizeFileName(file.name)}`
-  const buf = Buffer.from(await file.arrayBuffer())
+
+  // Encriptar el archivo antes de subir a Storage
+  const plainBuffer = Buffer.from(await file.arrayBuffer())
+  let uploadBuffer: Buffer
+  try {
+    uploadBuffer = encryptBuffer(plainBuffer)
+  } catch (err) {
+    console.error("Error de encriptación:", err)
+    return { error: "Error al procesar el archivo. Contacte soporte." as const }
+  }
+
+  // Nombre de archivo: UUID para evitar enumeración de nombres
+  const safeExtension = file.name.split(".").pop()?.replace(/[^a-zA-Z0-9]/g, "") ?? "bin"
+  const path = `${caseId}/${crypto.randomUUID()}.enc.${safeExtension}`
 
   const { error: upErr } = await supabase.storage
     .from("documents")
-    .upload(path, buf, {
-      contentType: file.type || "application/octet-stream",
+    .upload(path, uploadBuffer, {
+      contentType: "application/octet-stream", // siempre binario opaco
       upsert: false,
     })
 
@@ -46,12 +77,13 @@ export async function uploadCaseDocument(formData: FormData) {
 
   const { error: docErr } = await supabase.from("documents").insert({
     case_id: caseId,
-    name: file.name,
-    file_type: file.type || null,
+    name: file.name,           // nombre original para mostrar en UI
+    file_type: file.type,
     file_url: path,
     file_size: String(file.size),
     uploaded_by: user.id,
     uploaded_by_role: uploadedByRole,
+    encrypted: true,           // flag para saber que hay que desencriptar al descargar
   })
 
   if (docErr) {
@@ -102,6 +134,71 @@ export async function getCaseDocumentSignedUrl(storagePath: string) {
 
   if (error || !data?.signedUrl) return { error: error?.message ?? "URL no disponible" }
   return { url: data.signedUrl }
+}
+
+/**
+ * Descarga el documento encriptado desde Storage, lo desencripta en el servidor
+ * y retorna una URL de datos base64 temporal para el cliente.
+ * Así la clave de encriptación NUNCA sale del servidor.
+ */
+export async function downloadDecryptedDocument(storagePath: string) {
+  const supabase = createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "No autenticado" as const }
+
+  // Verificar que el usuario pertenece al caso
+  const caseId = storagePath.split("/")[0]
+  if (!caseId) return { error: "Ruta inválida" as const }
+
+  const { data: caseRow } = await supabase
+    .from("cases")
+    .select("client_id, lawyer_id")
+    .eq("id", caseId)
+    .single()
+
+  if (!caseRow || (caseRow.client_id !== user.id && caseRow.lawyer_id !== user.id)) {
+    return { error: "Sin permiso" as const }
+  }
+
+  // Obtener metadatos del documento para saber si está encriptado
+  const { data: docRow } = await supabase
+    .from("documents")
+    .select("name, file_type, encrypted")
+    .eq("file_url", storagePath)
+    .single()
+
+  // Descargar el archivo desde Storage
+  const { data: fileData, error: dlError } = await supabase.storage
+    .from("documents")
+    .download(storagePath)
+
+  if (dlError || !fileData) return { error: "Error al descargar archivo" as const }
+
+  const rawBuffer = Buffer.from(await fileData.arrayBuffer())
+
+  // Desencriptar si corresponde
+  let finalBuffer: Buffer
+  if (docRow?.encrypted) {
+    try {
+      finalBuffer = decryptBuffer(rawBuffer)
+    } catch (err) {
+      console.error("Error de desencriptación:", err)
+      return { error: "Error al descifrar el archivo. Contacte soporte." as const }
+    }
+  } else {
+    finalBuffer = rawBuffer
+  }
+
+  // Retornar como base64 con el tipo MIME correcto
+  const base64 = finalBuffer.toString("base64")
+  const mimeType = docRow?.file_type ?? "application/octet-stream"
+  const fileName = docRow?.name ?? storagePath.split("/").pop() ?? "documento"
+
+  return {
+    dataUrl: `data:${mimeType};base64,${base64}`,
+    fileName,
+    mimeType,
+  }
 }
 
 export async function updateNextStepCompleted(stepId: string, completed: boolean) {

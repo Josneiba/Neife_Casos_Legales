@@ -25,13 +25,27 @@ import {
 } from "@/lib/queries/case-detail"
 import {
   uploadCaseDocument,
-  getCaseDocumentSignedUrl,
+  downloadDecryptedDocument,
   updateNextStepCompleted,
 } from "@/lib/actions/case-detail"
 import { createClient } from "@/lib/supabase/client"
 
 type TabType = "active" | "waiting" | "pending" | "completed" | "all"
 type DetailTab = "summary" | "documents" | "activity" | "steps"
+
+const ALLOWED_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx", "txt"]
+const MAX_FILE_SIZE_MB = 25
+
+function validateFile(file: File): string | null {
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return `Tipo de archivo no permitido. Extensiones aceptadas: ${ALLOWED_EXTENSIONS.join(", ")}`
+  }
+  if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+    return `El archivo supera el límite de ${MAX_FILE_SIZE_MB} MB`
+  }
+  return null
+}
 
 type ClientCaseView = {
   id: string
@@ -341,6 +355,13 @@ export default function CasesPage() {
                         {statusConfig[selectedCase.status].label}
                       </span>
                     </div>
+                    {statusConfig[selectedCase.status]?.description && (
+                      <div className="mt-3 p-3 bg-[#F8F7F4] rounded-xl border border-[#D5C3B6]/40">
+                        <p className="text-xs text-[#75524C] leading-relaxed">
+                          {statusConfig[selectedCase.status].description}
+                        </p>
+                      </div>
+                    )}
 
                     {/* Status banner - conditional */}
                     {selectedCase.status === "waiting" && (
@@ -445,6 +466,12 @@ export default function CasesPage() {
                       onChange={async (e) => {
                         const file = e.target.files?.[0]
                         if (!file || !selectedCaseId) return
+                        const validationError = validateFile(file)
+                        if (validationError) {
+                          alert(validationError)
+                          e.target.value = ""
+                          return
+                        }
                         setDocUploading(true)
                         const fd = new FormData()
                         fd.append("case_id", selectedCaseId)
@@ -526,8 +553,16 @@ export default function CasesPage() {
                                         className="p-1 text-[#75524C] hover:text-[#5E8B8C]"
                                         title="Descargar"
                                         onClick={async () => {
-                                          const r = await getCaseDocumentSignedUrl(path)
-                                          if ("url" in r && r.url) window.open(r.url, "_blank", "noopener,noreferrer")
+                                          const r = await downloadDecryptedDocument(path)
+                                          if ("dataUrl" in r && r.dataUrl) {
+                                            // Crear link temporal para descarga directa (el archivo nunca va a una URL pública)
+                                            const a = document.createElement("a")
+                                            a.href = r.dataUrl
+                                            a.download = r.fileName
+                                            document.body.appendChild(a)
+                                            a.click()
+                                            document.body.removeChild(a)
+                                          }
                                         }}
                                       >
                                         <Download size={16} />

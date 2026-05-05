@@ -90,11 +90,26 @@ document.getElementById("login-form").addEventListener("submit", (e) => {
 
 // Password recovery functions
 function showForgotPassword() {
-  alert("Funcionalidad de recuperación de contraseña - A implementar")
+  const email = prompt("Ingresa tu correo electrónico registrado para recuperar tu contraseña:")
+  if (!email) return
+  if (!/\S+@\S+\.\S+/.test(email)) {
+    alert("Correo inválido. Por favor ingresa un email válido.")
+    return
+  }
+
+  alert(
+    `Si existe una cuenta registrada con ${email}, se enviará un correo con instrucciones de recuperación.`
+  )
 }
 
 function showForgotEmail() {
-  alert("Funcionalidad de recuperación de correo - A implementar")
+  const name = prompt("Ingresa tu nombre completo registrado:")
+  if (!name) return
+  const city = prompt("Ingresa tu ciudad registrada (opcional):")
+
+  alert(
+    "Si encontramos una cuenta que coincide con esos datos, te enviaremos instrucciones a ese correo. Si no, contacta soporte."
+  )
 }
 
 // Form validation

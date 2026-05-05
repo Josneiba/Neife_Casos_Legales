@@ -3,12 +3,19 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
-import { signIn } from "@/lib/actions/auth"
+import { recoverEmail, requestPasswordReset, signIn } from "@/lib/actions/auth"
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [authError, setAuthError] = useState("")
+  const [forgotMode, setForgotMode] = useState<"none" | "password" | "email">("none")
+  const [forgotEmail, setForgotEmail] = useState("")
+  const [forgotFullName, setForgotFullName] = useState("")
+  const [forgotCity, setForgotCity] = useState("")
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotStatus, setForgotStatus] = useState("")
+  const [forgotError, setForgotError] = useState("")
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -52,6 +59,59 @@ export default function LoginPage() {
       // redirect en curso
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setForgotError("")
+    setForgotStatus("")
+
+    if (!forgotEmail || !/\S+@\S+\.\S+/.test(forgotEmail)) {
+      setForgotError("Ingresa un email válido")
+      return
+    }
+
+    setForgotLoading(true)
+    try {
+      const result = await requestPasswordReset(forgotEmail)
+      if (result?.error) {
+        setForgotError(result.error)
+      } else {
+        setForgotStatus(
+          "Hemos enviado un enlace de recuperación a tu correo electrónico. Revisa tu bandeja de entrada."
+        )
+      }
+    } finally {
+      setForgotLoading(false)
+    }
+  }
+
+  const handleEmailRecovery = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setForgotError("")
+    setForgotStatus("")
+
+    if (!forgotFullName.trim()) {
+      setForgotError("Ingresa tu nombre completo para recuperar tu correo")
+      return
+    }
+
+    setForgotLoading(true)
+    try {
+      const result = await recoverEmail({
+        full_name: forgotFullName.trim(),
+        city: forgotCity.trim() || undefined,
+      })
+      if (result?.error) {
+        setForgotError(result.error)
+      } else if (result?.email) {
+        setForgotStatus(
+          `Encontramos una cuenta asociada: ${result.email}. Intenta iniciar sesión con ese correo.`
+        )
+      }
+    } finally {
+      setForgotLoading(false)
     }
   }
 
@@ -123,12 +183,108 @@ export default function LoginPage() {
               )}
             </div>
 
-            {/* Forgot Password */}
-            <div className="text-right">
-              <a href="#" className="text-sm text-[#5E8B8C] hover:underline">
+            {/* Forgot Password / Email */}
+            <div className="flex flex-col gap-2 text-right">
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotMode("password")
+                  setForgotError("")
+                  setForgotStatus("")
+                }}
+                className="text-sm text-[#5E8B8C] hover:underline"
+              >
                 ¿Olvidaste tu contraseña?
-              </a>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotMode("email")
+                  setForgotError("")
+                  setForgotStatus("")
+                }}
+                className="text-sm text-[#5E8B8C] hover:underline"
+              >
+                ¿Olvidaste tu correo?
+              </button>
             </div>
+
+            {forgotMode !== "none" && (
+              <div className="mt-4 rounded-xl border border-[#D5C3B6] bg-[#FAFAF8] p-4">
+                <div className="flex items-center justify-between mb-3 gap-3">
+                  <h2 className="text-sm font-semibold text-[#2D3C3C]">
+                    {forgotMode === "password"
+                      ? "Recuperar contraseña"
+                      : "Recuperar correo"
+                    }
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setForgotMode("none")}
+                    className="text-xs text-[#75524C] hover:underline"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+                {forgotError && (
+                  <p className="text-sm text-[#C27F79] mb-3">{forgotError}</p>
+                )}
+                {forgotStatus && (
+                  <p className="text-sm text-[#2D3C3C] mb-3">{forgotStatus}</p>
+                )}
+                {forgotMode === "password" ? (
+                  <form onSubmit={handlePasswordReset} className="space-y-3">
+                    <label className="block text-sm font-medium text-[#2D3C3C]">
+                      Correo electrónico registrado
+                    </label>
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C] border-[#D5C3B6]"
+                      placeholder="tu@email.com"
+                    />
+                    <button
+                      type="submit"
+                      disabled={forgotLoading}
+                      className="w-full py-3 bg-[#5E8B8C] text-white rounded-lg font-semibold hover:bg-[#5E8B8C]/90 transition-colors disabled:opacity-50"
+                    >
+                      {forgotLoading ? "Enviando enlace..." : "Enviar enlace de recuperación"}
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleEmailRecovery} className="space-y-3">
+                    <label className="block text-sm font-medium text-[#2D3C3C]">
+                      Nombre completo registrado
+                    </label>
+                    <input
+                      type="text"
+                      value={forgotFullName}
+                      onChange={(e) => setForgotFullName(e.target.value)}
+                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C] border-[#D5C3B6]"
+                      placeholder="Tu nombre completo"
+                    />
+                    <label className="block text-sm font-medium text-[#2D3C3C]">
+                      Ciudad (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={forgotCity}
+                      onChange={(e) => setForgotCity(e.target.value)}
+                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E8B8C] border-[#D5C3B6]"
+                      placeholder="Ciudad registrada"
+                    />
+                    <button
+                      type="submit"
+                      disabled={forgotLoading}
+                      className="w-full py-3 bg-[#5E8B8C] text-white rounded-lg font-semibold hover:bg-[#5E8B8C]/90 transition-colors disabled:opacity-50"
+                    >
+                      {forgotLoading ? "Buscando cuenta..." : "Recuperar correo"}
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
 
             {/* Submit */}
             <button

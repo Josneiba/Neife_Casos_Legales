@@ -24,12 +24,12 @@ export const cities = [
 ] as const
 
 export const statusConfig = {
-  active: { label: "Activo", bg: "bg-[#5E8B8C]", text: "text-white" },
-  pending: { label: "Pendiente", bg: "bg-[#C27F79]", text: "text-white" },
-  waiting: { label: "Esperando abogado", bg: "bg-[#F2C94C]", text: "text-[#2D3C3C]" },
-  completed: { label: "Completado", bg: "bg-[#D5C3B6]", text: "text-[#2D3C3C]" },
-  inProgress: { label: "En Progreso", bg: "bg-[#F2C94C]", text: "text-[#2D3C3C]" },
-  rejected: { label: "Declinado", bg: "bg-[#D5C3B6]/50", text: "text-[#75524C]" },
+  active: { label: "Activo", bg: "bg-[#5E8B8C]", text: "text-white", description: "Tienes un abogado asignado trabajando en tu caso. Revisa los próximos pasos y documentos pendientes." },
+  pending: { label: "Pendiente", bg: "bg-[#C27F79]", text: "text-white", description: "Hay acciones pendientes de tu parte. Revisa los próximos pasos asignados a ti." },
+  waiting: { label: "Esperando abogado", bg: "bg-[#F2C94C]", text: "text-[#2D3C3C]", description: "Tu caso fue publicado. Los abogados están revisando tu solicitud y enviarán propuestas en las próximas 24-48 horas." },
+  completed: { label: "Completado", bg: "bg-[#D5C3B6]", text: "text-[#2D3C3C]", description: "Tu caso fue cerrado exitosamente. Puedes dejar una reseña sobre tu abogado." },
+  inProgress: { label: "En Progreso", bg: "bg-[#F2C94C]", text: "text-[#2D3C3C]", description: "Tu caso está siendo trabajado activamente. Revisa los documentos y mensajes actualizados." },
+  rejected: { label: "Declinado", bg: "bg-[#D5C3B6]/50", text: "text-[#75524C]", description: "Este caso fue declinado por el abogado. Puedes buscar otro abogado." },
 }
 
 // Solicitudes entrantes para abogados
@@ -485,4 +485,13 @@ export const mockNextSteps = [
   { id: "2", text: "Firmar poder simple", completed: true, dueDate: "20/01/2024", assignedTo: "client" },
   { id: "3", text: "Revisar propuesta de acuerdo", completed: false, dueDate: "25/01/2024", assignedTo: "lawyer" },
   { id: "4", text: "Asistir a audiencia de mediación", completed: false, dueDate: "30/01/2024", assignedTo: "client" },
+]
+
+export const referencePrices = [
+  { service: "Divorcio de mutuo acuerdo", range: "UF 5 – UF 15", time: "2–4 meses" },
+  { service: "Demanda laboral", range: "UF 8 – UF 25", time: "4–8 meses" },
+  { service: "Pensión de alimentos", range: "UF 5 – UF 18", time: "2–5 meses" },
+  { service: "Contrato de arriendo", range: "UF 1 – UF 3", time: "1–3 días" },
+  { service: "Posesión efectiva", range: "UF 10 – UF 30", time: "3–6 meses" },
+  { service: "Consulta inicial", range: "Gratis – UF 1", time: "30 min" },
 ]
