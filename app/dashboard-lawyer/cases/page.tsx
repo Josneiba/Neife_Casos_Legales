@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import Link from "next/link"
 import {
   FileText,
   Clock,
@@ -546,7 +547,12 @@ export default function LawyerCasesPage() {
                     <div className="flex items-start justify-between flex-wrap gap-3">
                       <div className="flex items-center gap-3 flex-wrap">
                         <h2 className="text-xl font-bold text-[#2D3C3C]">{selectedCase.title}</h2>
-                        
+                        <Link
+                          href={`/dashboard-lawyer/cases/${selectedCase.id}/workspace`}
+                          className="text-sm font-semibold text-[#5E8B8C] hover:underline"
+                        >
+                          Ver workspace
+                        </Link>
                         {/* Selector de estado */}
                         <div className="flex items-center gap-2">
                           <select

@@ -348,7 +348,15 @@ export default function CasesPage() {
                   <div className="space-y-6">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h2 className="text-xl font-bold text-[#2D3C3C]">{selectedCase.title}</h2>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h2 className="text-xl font-bold text-[#2D3C3C]">{selectedCase.title}</h2>
+                          <Link
+                            href={`/dashboard-client/cases/${selectedCase.id}/workspace`}
+                            className="text-sm font-semibold text-[#5E8B8C] hover:underline"
+                          >
+                            Ir al workspace
+                          </Link>
+                        </div>
                         <p className="text-[#75524C]">{selectedCase.type}</p>
                       </div>
                       <span className={`px-3 py-1 rounded-full text-sm ${statusConfig[selectedCase.status].bg} ${statusConfig[selectedCase.status].text}`}>

@@ -8,6 +8,8 @@ alter table public.case_activities enable row level security;
 alter table public.case_notes enable row level security;
 alter table public.next_steps enable row level security;
 alter table public.documents enable row level security;
+alter table public.case_documents enable row level security;
+alter table public.case_document_versions enable row level security;
 alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
 alter table public.reviews enable row level security;
@@ -68,6 +70,83 @@ create policy "Partes ven documentos del caso" on public.documents
 
 create policy "Partes suben documentos" on public.documents
   for insert with check (auth.uid() = uploaded_by);
+
+create policy "Participantes ven documentos de workspace" on public.case_documents
+  for select using (
+    exists (
+      select 1 from public.cases c
+      where c.id = case_documents.case_id
+      and (c.client_id = auth.uid() or c.lawyer_id = auth.uid())
+    )
+  );
+
+create policy "Participantes insertan documentos de workspace" on public.case_documents
+  for insert with check (
+    exists (
+      select 1 from public.cases c
+      where c.id = case_documents.case_id
+      and (c.client_id = auth.uid() or c.lawyer_id = auth.uid())
+    )
+  );
+
+create policy "Participantes actualizan documentos de workspace" on public.case_documents
+  for update using (
+    exists (
+      select 1 from public.cases c
+      where c.id = case_documents.case_id
+      and (c.client_id = auth.uid() or c.lawyer_id = auth.uid())
+    )
+  );
+
+create policy "Participantes borran documentos de workspace" on public.case_documents
+  for delete using (
+    exists (
+      select 1 from public.cases c
+      where c.id = case_documents.case_id
+      and (c.client_id = auth.uid() or c.lawyer_id = auth.uid())
+    )
+  );
+
+create policy "Participantes ven versiones de documentos" on public.case_document_versions
+  for select using (
+    exists (
+      select 1 from public.case_documents d
+      join public.cases c on c.id = d.case_id
+      where d.id = case_document_versions.case_document_id
+      and (c.client_id = auth.uid() or c.lawyer_id = auth.uid())
+    )
+  );
+
+create policy "Participantes insertan versiones de documentos" on public.case_document_versions
+  for insert with check (
+    exists (
+      select 1 from public.case_documents d
+      join public.cases c on c.id = d.case_id
+      where d.id = case_document_versions.case_document_id
+      and (c.client_id = auth.uid() or c.lawyer_id = auth.uid())
+    )
+    and uploaded_by = auth.uid()
+  );
+
+create policy "Participantes actualizan versiones de documentos" on public.case_document_versions
+  for update using (
+    exists (
+      select 1 from public.case_documents d
+      join public.cases c on c.id = d.case_id
+      where d.id = case_document_versions.case_document_id
+      and (c.client_id = auth.uid() or c.lawyer_id = auth.uid())
+    )
+  );
+
+create policy "Participantes borran versiones de documentos" on public.case_document_versions
+  for delete using (
+    exists (
+      select 1 from public.case_documents d
+      join public.cases c on c.id = d.case_id
+      where d.id = case_document_versions.case_document_id
+      and (c.client_id = auth.uid() or c.lawyer_id = auth.uid())
+    )
+  );
 
 create policy "Participantes ven conversación" on public.conversations
   for select using (auth.uid() = client_id or auth.uid() = lawyer_id);

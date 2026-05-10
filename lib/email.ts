@@ -37,3 +37,27 @@ export async function sendTransactionalEmail(opts: {
 
   return { sent: true as const }
 }
+
+export async function sendWorkspaceDocumentNotification(opts: {
+  to: string
+  subject: string
+  html: string
+}) {
+  return sendTransactionalEmail({
+    to: opts.to,
+    subject: opts.subject,
+    html: opts.html,
+  })
+}
+
+export async function sendWorkspaceDocumentSignedNotification(opts: {
+  to: string
+  subject: string
+  html: string
+}) {
+  return sendTransactionalEmail({
+    to: opts.to,
+    subject: opts.subject,
+    html: opts.html,
+  })
+}

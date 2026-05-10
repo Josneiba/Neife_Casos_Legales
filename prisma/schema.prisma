@@ -173,6 +173,43 @@ model Document {
   @@map("documents")
 }
 
+model CaseDocument {
+  id          String               @id @default(uuid()) @db.Uuid
+  caseId      String               @map("case_id") @db.Uuid
+  title       String
+  description String?
+  archived    Boolean              @default(false)
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  legalCase LegalCase              @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  versions  CaseDocumentVersion[]
+
+  @@map("case_documents")
+}
+
+model CaseDocumentVersion {
+  id                String   @id @default(uuid()) @db.Uuid
+  caseDocumentId    String   @map("case_document_id") @db.Uuid
+  fileName          String   @map("file_name")
+  fileType          String?  @map("file_type")
+  fileSize          String?  @map("file_size")
+  storagePath       String   @map("storage_path")
+  versionNumber     Int      @map("version_number")
+  uploadedBy        String?  @map("uploaded_by") @db.Uuid
+  uploadedByRole    String?  @map("uploaded_by_role")
+  signedStoragePath String?  @map("signed_storage_path")
+  signedBy          String?  @map("signed_by") @db.Uuid
+  signedByRole      String?  @map("signed_by_role")
+  signedAt          DateTime? @map("signed_at")
+  encrypted         Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  caseDocument CaseDocument @relation(fields: [caseDocumentId], references: [id], onDelete: Cascade)
+
+  @@map("case_document_versions")
+}
+
 model Conversation {
   id            String    @id @default(uuid()) @db.Uuid
   clientId      String?   @map("client_id") @db.Uuid
